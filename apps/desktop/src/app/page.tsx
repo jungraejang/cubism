@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
-import type { ClockRenderer, ModuleRotation } from "@cubism/protocol";
+import type { ModuleRotation } from "@cubism/protocol";
 
 type DeviceStatus = "online" | "offline" | "unknown";
 
@@ -14,10 +14,8 @@ const ROTATION_OPTIONS: { value: ModuleRotation; label: string }[] = [
   { value: 270, label: "Left" },
 ];
 
-const RENDERER_OPTIONS: { value: ClockRenderer; label: string }[] = [
-  { value: "css", label: "CSS" },
-  { value: "three", label: "3D Hologram" },
-];
+const DEFAULT_CIRCLE_COLOR = "#22d3ee";
+const DEFAULT_TEXT_COLOR = "#67e8f9";
 
 export default function DesktopHomePage() {
   const socket = useMemo(() => getSocket(), []);
@@ -29,7 +27,8 @@ export default function DesktopHomePage() {
   const [rotation, setRotation] = useState<ModuleRotation>(0);
   const [flipHorizontal, setFlipHorizontal] = useState(false);
   const [flipVertical, setFlipVertical] = useState(false);
-  const [renderer, setRenderer] = useState<ClockRenderer>("css");
+  const [circleColor, setCircleColor] = useState(DEFAULT_CIRCLE_COLOR);
+  const [textColor, setTextColor] = useState(DEFAULT_TEXT_COLOR);
 
   const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
   const deviceId = process.env.NEXT_PUBLIC_DEMO_DEVICE_ID ?? "pi-holo-001";
@@ -79,7 +78,8 @@ export default function DesktopHomePage() {
         rotation,
         flipHorizontal,
         flipVertical,
-        renderer,
+        circleColor,
+        textColor,
       },
     });
   }
@@ -173,31 +173,50 @@ export default function DesktopHomePage() {
 
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-3">
-                <span className="w-32 text-zinc-400">Renderer</span>
+                <span className="w-32 text-zinc-400">Colors</span>
                 <p className="text-xs text-zinc-500">
-                  3D Hologram uses WebGL on the Pi - needs Pi 4 or better.
+                  Customize the clock circle and text colors.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {RENDERER_OPTIONS.map((option) => {
-                  const active = renderer === option.value;
-                  return (
-                    <motion.button
-                      key={option.value}
-                      whileTap={{ scale: 0.95 }}
-                      whileHover={{ scale: 1.04 }}
-                      onClick={() => setRenderer(option.value)}
-                      aria-pressed={active}
-                      className={`flex min-w-32 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-                        active
-                          ? "bg-cyan-400 text-zinc-950"
-                          : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                      }`}
-                    >
-                      {option.label}
-                    </motion.button>
-                  );
-                })}
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex items-center gap-2 text-sm text-zinc-300">
+                  <input
+                    type="color"
+                    value={circleColor}
+                    onChange={(event) => setCircleColor(event.target.value)}
+                    aria-label="Clock circle color"
+                    className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
+                  />
+                  <span>Circle</span>
+                  <span className="font-mono text-xs text-zinc-500">
+                    {circleColor}
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2 text-sm text-zinc-300">
+                  <input
+                    type="color"
+                    value={textColor}
+                    onChange={(event) => setTextColor(event.target.value)}
+                    aria-label="Clock text color"
+                    className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
+                  />
+                  <span>Text</span>
+                  <span className="font-mono text-xs text-zinc-500">
+                    {textColor}
+                  </span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCircleColor(DEFAULT_CIRCLE_COLOR);
+                    setTextColor(DEFAULT_TEXT_COLOR);
+                  }}
+                  className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
+                >
+                  Reset
+                </button>
               </div>
             </div>
 

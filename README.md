@@ -83,21 +83,6 @@ In `apps/renderer/.env.local` on the Pi, set `NEXT_PUBLIC_SOCKET_URL` to the LAN
 
 A systemd service can wrap both processes for auto-start on boot.
 
-### Clock Module renderers
-
-The desktop control panel can pick between two clock implementations:
-
-- **CSS** (default): lightweight DOM clock with digit fall animation. Runs everywhere, including Pi 3 / Zero.
-- **3D Hologram**: WebGL implementation using `@react-three/fiber` with extruded 3D text, a custom hologram shader (scanlines + fresnel rim glow + flicker), and orbiting torus rings. Requires a Pi 4 or better.
-
-If the 3D renderer feels choppy on your Pi:
-
-1. Reduce shader work by lowering `curveSegments` from `6` to `4` on the time `<Text3D>` in [apps/renderer/src/modules/ClockModule3D.tsx](apps/renderer/src/modules/ClockModule3D.tsx).
-2. Drop the `<Float>` wrapper to disable continuous idle motion (lets the GPU sleep between ticks).
-3. Lower `dpr` from `[1, 1.5]` to a flat `1` so Chromium stops upscaling on high-DPI displays.
-
-Fall back to the CSS renderer at any time from the desktop control panel — no rebuild required.
-
 ## Architecture
 
 ```mermaid
