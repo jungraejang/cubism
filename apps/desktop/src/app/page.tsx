@@ -22,6 +22,8 @@ export default function DesktopHomePage() {
   const [format, setFormat] = useState<"12h" | "24h">("12h");
   const [showSeconds, setShowSeconds] = useState(true);
   const [rotation, setRotation] = useState<ModuleRotation>(0);
+  const [flipHorizontal, setFlipHorizontal] = useState(false);
+  const [flipVertical, setFlipVertical] = useState(false);
 
   const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
   const deviceId = process.env.NEXT_PUBLIC_DEMO_DEVICE_ID ?? "pi-holo-001";
@@ -69,6 +71,8 @@ export default function DesktopHomePage() {
         format,
         showSeconds,
         rotation,
+        flipHorizontal,
+        flipVertical,
       },
     });
   }
@@ -194,6 +198,50 @@ export default function DesktopHomePage() {
                     </motion.button>
                   );
                 })}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <span className="w-32 text-zinc-400">Mirror</span>
+                <p className="text-xs text-zinc-500">
+                  Some splitters reflect a single axis instead of rotating.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  whileHover={{ scale: 1.04 }}
+                  onClick={() => setFlipHorizontal((value) => !value)}
+                  aria-pressed={flipHorizontal}
+                  className={`flex min-w-32 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    flipHorizontal
+                      ? "bg-cyan-400 text-zinc-950"
+                      : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                  }`}
+                >
+                  <span aria-hidden className="text-base leading-none">
+                    ↔
+                  </span>
+                  <span>Mirror horizontal</span>
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  whileHover={{ scale: 1.04 }}
+                  onClick={() => setFlipVertical((value) => !value)}
+                  aria-pressed={flipVertical}
+                  className={`flex min-w-32 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    flipVertical
+                      ? "bg-cyan-400 text-zinc-950"
+                      : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                  }`}
+                >
+                  <span aria-hidden className="text-base leading-none">
+                    ↕
+                  </span>
+                  <span>Mirror vertical</span>
+                </motion.button>
               </div>
             </div>
 

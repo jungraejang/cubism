@@ -39,11 +39,13 @@ export function ClockModule({ config }: Props) {
   }, [now, config]);
 
   const rotation = config.rotation ?? 0;
+  const scaleX = config.flipHorizontal ? -1 : 1;
+  const scaleY = config.flipVertical ? -1 : 1;
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-black text-cyan-200">
       <motion.div
-        animate={{ rotate: rotation }}
+        animate={{ rotate: rotation, scaleX, scaleY }}
         transition={{ duration: 0.6, ease: "easeInOut" }}
         className="relative flex h-full w-full items-center justify-center"
       >

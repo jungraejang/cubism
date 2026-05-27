@@ -16,6 +16,10 @@ export type ClockModuleConfig = {
   showSeconds: boolean;
   timezone?: string;
   rotation?: ModuleRotation;
+  /** Mirror the rendered output horizontally (scaleX(-1)). */
+  flipHorizontal?: boolean;
+  /** Mirror the rendered output vertically (scaleY(-1)). */
+  flipVertical?: boolean;
 };
 
 export type ModuleConfigMap = {
