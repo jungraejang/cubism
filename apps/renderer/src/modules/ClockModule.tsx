@@ -13,6 +13,20 @@ const DEFAULT_TEXT_COLOR = "#67e8f9";
 const DEFAULT_DATE_COLOR = "#a5f3fc";
 
 /**
+ * Pixel-shift parameters for burn-in mitigation. Every PIXEL_SHIFT_INTERVAL_MS
+ * we pick a fresh random offset in [-PIXEL_SHIFT_MAX, PIXEL_SHIFT_MAX] for both
+ * axes and ease the whole clock to it over PIXEL_SHIFT_DURATION_S seconds.
+ *
+ * The motion is far too small and slow to perceive, but it prevents any single
+ * sub-pixel from accumulating uninterrupted "on time" - the same trick OLED
+ * TVs use internally. The shift is applied OUTSIDE the orientation transform
+ * so it always moves in display-pixel space regardless of rotate/flip.
+ */
+const PIXEL_SHIFT_MAX = 3;
+const PIXEL_SHIFT_INTERVAL_MS = 60_000;
+const PIXEL_SHIFT_DURATION_S = 2;
+
+/**
  * Converts a #RRGGBB hex string into an rgba() string at the given alpha. Used
  * so the user's chosen colors flow through to every layer (border, halo,
  * inner rings, text glow) at appropriate opacities.
@@ -59,12 +73,24 @@ function AnimatedChar({ char, isDigit }: { char: string; isDigit: boolean }) {
 
 export function ClockModule({ config }: Props) {
   const [now, setNow] = useState(() => new Date());
+  const [pixelShift, setPixelShift] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       setNow(new Date());
     }, 1000);
     return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const pick = () => {
+      const r = () =>
+        Math.floor(Math.random() * (PIXEL_SHIFT_MAX * 2 + 1)) - PIXEL_SHIFT_MAX;
+      setPixelShift({ x: r(), y: r() });
+    };
+    pick();
+    const id = window.setInterval(pick, PIXEL_SHIFT_INTERVAL_MS);
+    return () => window.clearInterval(id);
   }, []);
 
   const time = useMemo(() => {
@@ -96,63 +122,73 @@ export function ClockModule({ config }: Props) {
   return (
     <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-black">
       <motion.div
-        animate={{ rotate: rotation, scaleX, scaleY }}
-        transition={{ duration: 0.6, ease: "easeInOut" }}
+        animate={{ x: pixelShift.x, y: pixelShift.y }}
+        transition={{ duration: PIXEL_SHIFT_DURATION_S, ease: "easeInOut" }}
         className="relative flex h-full w-full items-center justify-center"
-        style={{ color: textColor }}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.7, filter: "blur(18px)" }}
-          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-          exit={{ opacity: 0, scale: 0.8, filter: "blur(12px)" }}
-          transition={{ duration: 0.9, ease: "easeOut" }}
-          className="relative flex h-[80vmin] w-[80vmin] items-center justify-center rounded-full border"
-          style={{
-            borderColor: withAlpha(circleColor, 0.4),
-            backgroundColor: withAlpha(circleColor, 0.05),
-            boxShadow: `0 0 80px ${withAlpha(circleColor, 0.35)}`,
-          }}
+          animate={{ rotate: rotation, scaleX, scaleY }}
+          transition={{ duration: 0.6, ease: "easeInOut" }}
+          className="relative flex h-full w-full items-center justify-center"
+          style={{ color: textColor }}
         >
           <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
-            className="absolute inset-8 rounded-full border border-dashed"
-            style={{ borderColor: withAlpha(circleColor, 0.25) }}
-          />
+            initial={{ opacity: 0, scale: 0.7, filter: "blur(18px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            exit={{ opacity: 0, scale: 0.8, filter: "blur(12px)" }}
+            transition={{ duration: 0.9, ease: "easeOut" }}
+            className="relative flex h-[80vmin] w-[80vmin] items-center justify-center rounded-full border"
+            style={{
+              borderColor: withAlpha(circleColor, 0.4),
+              backgroundColor: withAlpha(circleColor, 0.05),
+              boxShadow: `0 0 80px ${withAlpha(circleColor, 0.35)}`,
+            }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
+              className="absolute inset-8 rounded-full border border-dashed"
+              style={{ borderColor: withAlpha(circleColor, 0.25) }}
+            />
+
+            <motion.div
+              animate={{ rotate: -360 }}
+              transition={{ duration: 45, repeat: Infinity, ease: "linear" }}
+              className="absolute inset-20 rounded-full border"
+              style={{ borderColor: withAlpha(circleColor, 0.15) }}
+            />
+
+            <div className="text-center">
+              <div
+                className="flex items-center justify-center text-[12vmin] font-bold tracking-tight tabular-nums"
+                style={{ filter: `drop-shadow(0 0 30px ${textColor})` }}
+              >
+                {time.split("").map((char, i) => (
+                  <AnimatedChar
+                    key={i}
+                    char={char}
+                    isDigit={/\d/.test(char)}
+                  />
+                ))}
+              </div>
+              <div
+                className="mt-6 text-[3.2vmin] uppercase tracking-[0.35em]"
+                style={{ color: dateColor }}
+              >
+                {date}
+              </div>
+            </div>
+          </motion.div>
 
           <motion.div
-            animate={{ rotate: -360 }}
-            transition={{ duration: 45, repeat: Infinity, ease: "linear" }}
-            className="absolute inset-20 rounded-full border"
-            style={{ borderColor: withAlpha(circleColor, 0.15) }}
+            animate={{ opacity: [0.15, 0.35, 0.15] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background: `radial-gradient(circle, ${withAlpha(circleColor, 0.2)}, transparent 55%)`,
+            }}
           />
-
-          <div className="text-center">
-            <div
-              className="flex items-center justify-center text-[12vmin] font-bold tracking-tight tabular-nums"
-              style={{ filter: `drop-shadow(0 0 30px ${textColor})` }}
-            >
-              {time.split("").map((char, i) => (
-                <AnimatedChar key={i} char={char} isDigit={/\d/.test(char)} />
-              ))}
-            </div>
-            <div
-              className="mt-6 text-[3.2vmin] uppercase tracking-[0.35em]"
-              style={{ color: dateColor }}
-            >
-              {date}
-            </div>
-          </div>
         </motion.div>
-
-        <motion.div
-          animate={{ opacity: [0.15, 0.35, 0.15] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: `radial-gradient(circle, ${withAlpha(circleColor, 0.2)}, transparent 55%)`,
-          }}
-        />
       </motion.div>
     </div>
   );
