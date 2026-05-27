@@ -1,12 +1,44 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { ClockModuleConfig } from "@cubism/protocol";
 
 type Props = {
   config: ClockModuleConfig;
 };
+
+/**
+ * A single character cell. Digits animate with a slot-machine fall-from-above
+ * effect when their value changes. Separators (colon, space, AM/PM) render
+ * statically since they rarely change.
+ */
+function AnimatedChar({ char, isDigit }: { char: string; isDigit: boolean }) {
+  if (!isDigit) {
+    return <span>{char}</span>;
+  }
+
+  return (
+    <span className="relative inline-block overflow-hidden leading-none">
+      {/* Invisible "0" sizes the cell — all tabular digits share this width. */}
+      <span aria-hidden className="invisible inline-block select-none">
+        0
+      </span>
+      <AnimatePresence initial={false}>
+        <motion.span
+          key={char}
+          initial={{ y: "-100%", opacity: 0 }}
+          animate={{ y: "0%", opacity: 1 }}
+          exit={{ y: "100%", opacity: 0 }}
+          transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="absolute inset-0 flex items-center justify-center"
+        >
+          {char}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
 
 export function ClockModule({ config }: Props) {
   const [now, setNow] = useState(() => new Date());
@@ -68,21 +100,16 @@ export function ClockModule({ config }: Props) {
             className="absolute inset-20 rounded-full border border-cyan-300/10"
           />
 
-          <motion.div
-            animate={{
-              scale: [1, 1.035, 1],
-              opacity: [0.8, 1, 0.8],
-            }}
-            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-            className="text-center"
-          >
-            <div className="text-[12vmin] font-bold tracking-tight drop-shadow-[0_0_30px_rgba(103,232,249,0.9)]">
-              {time}
+          <div className="text-center">
+            <div className="flex items-center justify-center text-[12vmin] font-bold tracking-tight tabular-nums drop-shadow-[0_0_30px_rgba(103,232,249,0.9)]">
+              {time.split("").map((char, i) => (
+                <AnimatedChar key={i} char={char} isDigit={/\d/.test(char)} />
+              ))}
             </div>
-            <div className="mt-4 text-[3vmin] uppercase tracking-[0.5em] text-cyan-100/70">
+            <div className="mt-6 text-[4.5vmin] uppercase tracking-[0.35em] text-cyan-100/70">
               {date}
             </div>
-          </motion.div>
+          </div>
         </motion.div>
 
         <motion.div
