@@ -11,6 +11,13 @@ export type DeviceStatus = "online" | "offline";
  */
 export type ModuleRotation = 0 | 90 | 180 | 270;
 
+/**
+ * Visual implementation to use for the Clock Module on the renderer.
+ * - "css":   Lightweight DOM/CSS clock with digit fall animation.
+ * - "three": WebGL hologram clock (extruded 3D text + hologram shader).
+ */
+export type ClockRenderer = "css" | "three";
+
 export type ClockModuleConfig = {
   format: "12h" | "24h";
   showSeconds: boolean;
@@ -20,6 +27,8 @@ export type ClockModuleConfig = {
   flipHorizontal?: boolean;
   /** Mirror the rendered output vertically (scaleY(-1)). */
   flipVertical?: boolean;
+  /** Which visual implementation the renderer should use. */
+  renderer?: ClockRenderer;
 };
 
 export type ModuleConfigMap = {

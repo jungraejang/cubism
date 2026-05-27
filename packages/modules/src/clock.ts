@@ -14,5 +14,6 @@ export const clockModule = {
     rotation: 0,
     flipHorizontal: false,
     flipVertical: false,
+    renderer: "css",
   },
 } satisfies HologramModuleManifest<"clock">;
