@@ -4,10 +4,18 @@ export type ModuleId = "clock";
 
 export type DeviceStatus = "online" | "offline";
 
+/**
+ * Display rotation in degrees, applied as a CSS transform on the module
+ * container. Used to compensate for beam-splitter optics that flip or rotate
+ * the rendered image.
+ */
+export type ModuleRotation = 0 | 90 | 180 | 270;
+
 export type ClockModuleConfig = {
   format: "12h" | "24h";
   showSeconds: boolean;
   timezone?: string;
+  rotation?: ModuleRotation;
 };
 
 export type ModuleConfigMap = {

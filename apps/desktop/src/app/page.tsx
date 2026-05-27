@@ -3,8 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
+import type { ModuleRotation } from "@cubism/protocol";
 
 type DeviceStatus = "online" | "offline" | "unknown";
+
+const ROTATION_OPTIONS: { value: ModuleRotation; label: string }[] = [
+  { value: 0, label: "Normal" },
+  { value: 90, label: "Right" },
+  { value: 180, label: "Upside down" },
+  { value: 270, label: "Left" },
+];
 
 export default function DesktopHomePage() {
   const socket = useMemo(() => getSocket(), []);
@@ -13,6 +21,7 @@ export default function DesktopHomePage() {
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
   const [format, setFormat] = useState<"12h" | "24h">("12h");
   const [showSeconds, setShowSeconds] = useState(true);
+  const [rotation, setRotation] = useState<ModuleRotation>(0);
 
   const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
   const deviceId = process.env.NEXT_PUBLIC_DEMO_DEVICE_ID ?? "pi-holo-001";
@@ -59,6 +68,7 @@ export default function DesktopHomePage() {
       config: {
         format,
         showSeconds,
+        rotation,
       },
     });
   }
@@ -149,6 +159,43 @@ export default function DesktopHomePage() {
               />
               <span>Show seconds</span>
             </label>
+
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <span className="w-32 text-zinc-400">Orientation</span>
+                <p className="text-xs text-zinc-500">
+                  Rotate to compensate for beam-splitter optics.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {ROTATION_OPTIONS.map((option) => {
+                  const active = rotation === option.value;
+                  return (
+                    <motion.button
+                      key={option.value}
+                      whileTap={{ scale: 0.95 }}
+                      whileHover={{ scale: 1.04 }}
+                      onClick={() => setRotation(option.value)}
+                      aria-pressed={active}
+                      className={`flex min-w-22 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                        active
+                          ? "bg-cyan-400 text-zinc-950"
+                          : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                      }`}
+                    >
+                      <span
+                        aria-hidden
+                        className="inline-block text-base leading-none"
+                        style={{ transform: `rotate(${option.value}deg)` }}
+                      >
+                        ↑
+                      </span>
+                      <span>{option.label}</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </div>
 
             <motion.button
               whileTap={{ scale: 0.96 }}

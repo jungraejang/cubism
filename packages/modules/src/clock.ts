@@ -11,5 +11,6 @@ export const clockModule = {
     format: "12h",
     showSeconds: true,
     timezone: undefined,
+    rotation: 0,
   },
 } satisfies HologramModuleManifest<"clock">;
