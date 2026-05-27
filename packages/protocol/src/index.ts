@@ -22,8 +22,10 @@ export type ClockModuleConfig = {
   flipVertical?: boolean;
   /** Hex color (e.g. "#22d3ee") for the clock circle, rings, and halo glow. */
   circleColor?: string;
-  /** Hex color (e.g. "#67e8f9") for the time digits and date label. */
+  /** Hex color (e.g. "#67e8f9") for the time digits. */
   textColor?: string;
+  /** Hex color (e.g. "#a5f3fc") for the date label below the time. */
+  dateColor?: string;
 };
 
 export type ModuleConfigMap = {

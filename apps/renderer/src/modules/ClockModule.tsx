@@ -10,6 +10,7 @@ type Props = {
 
 const DEFAULT_CIRCLE_COLOR = "#22d3ee";
 const DEFAULT_TEXT_COLOR = "#67e8f9";
+const DEFAULT_DATE_COLOR = "#a5f3fc";
 
 /**
  * Converts a #RRGGBB hex string into an rgba() string at the given alpha. Used
@@ -90,6 +91,7 @@ export function ClockModule({ config }: Props) {
   const scaleY = config.flipVertical ? -1 : 1;
   const circleColor = config.circleColor ?? DEFAULT_CIRCLE_COLOR;
   const textColor = config.textColor ?? DEFAULT_TEXT_COLOR;
+  const dateColor = config.dateColor ?? DEFAULT_DATE_COLOR;
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-black">
@@ -135,8 +137,8 @@ export function ClockModule({ config }: Props) {
               ))}
             </div>
             <div
-              className="mt-6 text-[4.5vmin] uppercase tracking-[0.35em]"
-              style={{ color: withAlpha(textColor, 0.7) }}
+              className="mt-6 text-[3.2vmin] uppercase tracking-[0.35em]"
+              style={{ color: dateColor }}
             >
               {date}
             </div>

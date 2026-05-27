@@ -16,6 +16,7 @@ const ROTATION_OPTIONS: { value: ModuleRotation; label: string }[] = [
 
 const DEFAULT_CIRCLE_COLOR = "#22d3ee";
 const DEFAULT_TEXT_COLOR = "#67e8f9";
+const DEFAULT_DATE_COLOR = "#a5f3fc";
 
 export default function DesktopHomePage() {
   const socket = useMemo(() => getSocket(), []);
@@ -29,6 +30,7 @@ export default function DesktopHomePage() {
   const [flipVertical, setFlipVertical] = useState(false);
   const [circleColor, setCircleColor] = useState(DEFAULT_CIRCLE_COLOR);
   const [textColor, setTextColor] = useState(DEFAULT_TEXT_COLOR);
+  const [dateColor, setDateColor] = useState(DEFAULT_DATE_COLOR);
 
   const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
   const deviceId = process.env.NEXT_PUBLIC_DEMO_DEVICE_ID ?? "pi-holo-001";
@@ -80,6 +82,7 @@ export default function DesktopHomePage() {
         flipVertical,
         circleColor,
         textColor,
+        dateColor,
       },
     });
   }
@@ -175,7 +178,7 @@ export default function DesktopHomePage() {
               <div className="flex items-center gap-3">
                 <span className="w-32 text-zinc-400">Colors</span>
                 <p className="text-xs text-zinc-500">
-                  Customize the clock circle and text colors.
+                  Customize the circle, time, and date colors.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-4">
@@ -198,12 +201,26 @@ export default function DesktopHomePage() {
                     type="color"
                     value={textColor}
                     onChange={(event) => setTextColor(event.target.value)}
-                    aria-label="Clock text color"
+                    aria-label="Clock time color"
                     className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
                   />
-                  <span>Text</span>
+                  <span>Time</span>
                   <span className="font-mono text-xs text-zinc-500">
                     {textColor}
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2 text-sm text-zinc-300">
+                  <input
+                    type="color"
+                    value={dateColor}
+                    onChange={(event) => setDateColor(event.target.value)}
+                    aria-label="Clock date color"
+                    className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
+                  />
+                  <span>Date</span>
+                  <span className="font-mono text-xs text-zinc-500">
+                    {dateColor}
                   </span>
                 </label>
 
@@ -212,6 +229,7 @@ export default function DesktopHomePage() {
                   onClick={() => {
                     setCircleColor(DEFAULT_CIRCLE_COLOR);
                     setTextColor(DEFAULT_TEXT_COLOR);
+                    setDateColor(DEFAULT_DATE_COLOR);
                   }}
                   className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
                 >

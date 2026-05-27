@@ -16,5 +16,6 @@ export const clockModule = {
     flipVertical: false,
     circleColor: "#22d3ee",
     textColor: "#67e8f9",
+    dateColor: "#a5f3fc",
   },
 } satisfies HologramModuleManifest<"clock">;
