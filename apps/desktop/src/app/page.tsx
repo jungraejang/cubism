@@ -9,6 +9,31 @@ type DeviceStatus = "online" | "offline" | "unknown";
 
 type ConfigByModule = Record<string, unknown>;
 
+function buildDefaultConfigMap(): ConfigByModule {
+  return Object.fromEntries(
+    modules.map((m) => [m.manifest.id, m.manifest.defaultConfig]),
+  );
+}
+
+/**
+ * Auto-rotate interval options. `null` disables rotation. Other values are
+ * in milliseconds; the desktop will advance to the next registered module on
+ * each tick when a non-null option is selected.
+ */
+const AUTO_ROTATE_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: "Off" },
+  { value: 10_000, label: "10 seconds" },
+  { value: 30_000, label: "30 seconds" },
+  { value: 60_000, label: "1 minute" },
+  { value: 5 * 60_000, label: "5 minutes" },
+];
+
+/**
+ * Debounce for the auto-send effect. Sub-second so a quick color drag or
+ * keystroke storm collapses into a single emit while still feeling live.
+ */
+const AUTO_SEND_DEBOUNCE_MS = 200;
+
 export default function DesktopHomePage() {
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
@@ -18,11 +43,29 @@ export default function DesktopHomePage() {
   const [selectedId, setSelectedId] = useState<string>(
     modules[0].manifest.id,
   );
-  const [configByModule, setConfigByModule] = useState<ConfigByModule>(() =>
-    Object.fromEntries(
-      modules.map((m) => [m.manifest.id, m.manifest.defaultConfig]),
-    ),
+  const [configByModule, setConfigByModule] = useState<ConfigByModule>(
+    buildDefaultConfigMap,
   );
+  const [autoRotateMs, setAutoRotateMs] = useState<number | null>(null);
+
+  /**
+   * After HMR or when a new module ships, React state may still lack that
+   * module's config entry. Backfill from each manifest's defaultConfig so
+   * Controls never receive `undefined`.
+   */
+  useEffect(() => {
+    setConfigByModule((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const m of modules) {
+        if (next[m.manifest.id] === undefined) {
+          next[m.manifest.id] = m.manifest.defaultConfig;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
 
   const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
   const deviceId = process.env.NEXT_PUBLIC_DEMO_DEVICE_ID ?? "pi-holo-001";
@@ -64,16 +107,48 @@ export default function DesktopHomePage() {
   const selected =
     modules.find((m) => m.manifest.id === selectedId) ?? modules[0];
   const SelectedControls = selected.Controls;
-  const currentConfig = configByModule[selected.manifest.id];
+  const currentConfig =
+    configByModule[selected.manifest.id] ?? selected.manifest.defaultConfig;
 
-  function sendToDevice() {
-    socket.emit("module:send-to-device", {
-      commandId: crypto.randomUUID(),
-      deviceId,
-      moduleId: selected.manifest.id,
-      config: currentConfig,
-    });
-  }
+  /**
+   * Auto-send: any time the selected module or its config changes, push the
+   * latest payload to the renderer after a short debounce. Switching modules
+   * causes an immediate (post-debounce) send so the renderer flips to the
+   * newly-picked module as soon as the user clicks it.
+   *
+   * Connection status is in the deps so a freshly-connected desktop emits the
+   * current state to the bridge right away rather than waiting for a change.
+   */
+  useEffect(() => {
+    if (!connected) return;
+    const timer = window.setTimeout(() => {
+      socket.emit("module:send-to-device", {
+        commandId: crypto.randomUUID(),
+        deviceId,
+        moduleId: selected.manifest.id,
+        config: currentConfig,
+      });
+    }, AUTO_SEND_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [connected, socket, deviceId, selected.manifest.id, currentConfig]);
+
+  /**
+   * Auto-rotate: when an interval is selected, cycle through the registered
+   * modules at that cadence. `selectedId` is in the deps so manual clicks
+   * reset the timer - the user gets a full interval after picking a module
+   * before the rotation continues.
+   */
+  useEffect(() => {
+    if (!autoRotateMs || modules.length <= 1) return;
+    const interval = window.setInterval(() => {
+      setSelectedId((prev) => {
+        const idx = modules.findIndex((m) => m.manifest.id === prev);
+        const nextIdx = (idx + 1) % modules.length;
+        return modules[nextIdx].manifest.id;
+      });
+    }, autoRotateMs);
+    return () => window.clearInterval(interval);
+  }, [autoRotateMs, selectedId]);
 
   return (
     <main className="min-h-screen overflow-hidden bg-zinc-950 text-white">
@@ -93,7 +168,8 @@ export default function DesktopHomePage() {
           </p>
           <h1 className="mt-3 text-4xl font-bold">Desktop Control Panel</h1>
           <p className="mt-2 text-zinc-400">
-            Control your Raspberry Pi-powered holographic assistant.
+            Control your Raspberry Pi-powered holographic assistant. Changes
+            apply to the hologram live.
           </p>
         </motion.section>
 
@@ -139,7 +215,7 @@ export default function DesktopHomePage() {
           >
             <h2 className="text-xl font-semibold">Modules</h2>
             <p className="mt-1 text-sm text-zinc-500">
-              Select a module to configure.
+              Select a module to display and configure.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {modules.map((m) => {
@@ -151,16 +227,61 @@ export default function DesktopHomePage() {
                     whileHover={{ scale: 1.04 }}
                     onClick={() => setSelectedId(m.manifest.id)}
                     aria-pressed={active}
-                    className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                    className={`relative rounded-lg px-3 py-2 text-sm transition-colors ${
                       active
                         ? "bg-cyan-400 text-zinc-950"
                         : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
                     }`}
                   >
                     {m.manifest.name}
+                    {active && autoRotateMs ? (
+                      <motion.span
+                        key={`${m.manifest.id}-${autoRotateMs}`}
+                        aria-hidden
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{
+                          duration: autoRotateMs / 1000,
+                          ease: "linear",
+                        }}
+                        className="absolute right-1 bottom-1 left-1 h-0.5 origin-left rounded-full bg-zinc-950/60"
+                      />
+                    ) : null}
                   </motion.button>
                 );
               })}
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-3 text-sm">
+                <span className="w-32 text-zinc-400">Auto rotate</span>
+                <select
+                  className="rounded-lg bg-zinc-800 px-3 py-2 text-white"
+                  value={autoRotateMs ?? ""}
+                  onChange={(event) =>
+                    setAutoRotateMs(
+                      event.target.value === ""
+                        ? null
+                        : Number(event.target.value),
+                    )
+                  }
+                >
+                  {AUTO_ROTATE_OPTIONS.map((option) => (
+                    <option
+                      key={option.label}
+                      value={option.value === null ? "" : option.value}
+                    >
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {autoRotateMs ? (
+                <p className="text-xs text-zinc-500">
+                  Cycling through {modules.length} modules - click any module
+                  to reset the timer.
+                </p>
+              ) : null}
             </div>
           </motion.section>
         )}
@@ -197,15 +318,6 @@ export default function DesktopHomePage() {
               }
             />
           </div>
-
-          <motion.button
-            whileTap={{ scale: 0.96 }}
-            whileHover={{ scale: 1.02 }}
-            onClick={sendToDevice}
-            className="mt-6 w-fit rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-zinc-950 hover:bg-cyan-300"
-          >
-            Send {selected.manifest.name} to Hologram
-          </motion.button>
         </motion.section>
       </motion.div>
     </main>

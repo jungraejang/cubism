@@ -1,6 +1,7 @@
 import type { AnyCubismModule } from "./types";
 import { clockModule } from "./clock";
 import { textModule } from "./text";
+import { weatherModule } from "./weather";
 
 /**
  * The single source of truth for all registered modules. Adding a new module
@@ -8,7 +9,11 @@ import { textModule } from "./text";
  * `defineModule(...)` export here. Both the desktop and renderer apps consume
  * this array - they do not need to know about specific modules.
  */
-export const modules: readonly AnyCubismModule[] = [clockModule, textModule];
+export const modules: readonly AnyCubismModule[] = [
+  clockModule,
+  textModule,
+  weatherModule,
+];
 
 export * from "./types";
 export * from "./defineModule";
