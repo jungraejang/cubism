@@ -110,22 +110,27 @@ export function ClockRenderer({ config }: Props) {
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-black">
+      {/*
+       * initial={false} on the pixel-shift and orientation wrappers stops them
+       * animating from their defaults on mount (the carousel transition in the
+       * renderer page handles entrance). They still animate when their target
+       * values change later - i.e. when the user adjusts orientation, the
+       * clock rotates smoothly to the new angle.
+       */}
       <motion.div
+        initial={false}
         animate={{ x: pixelShift.x, y: pixelShift.y }}
         transition={{ duration: PIXEL_SHIFT_DURATION_S, ease: "easeInOut" }}
         className="relative flex h-full w-full items-center justify-center"
       >
         <motion.div
+          initial={false}
           animate={{ rotate: rotation, scaleX, scaleY }}
           transition={{ duration: 0.6, ease: "easeInOut" }}
           className="relative flex h-full w-full items-center justify-center"
           style={{ color: textColor }}
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.7, filter: "blur(18px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.8, filter: "blur(12px)" }}
-            transition={{ duration: 0.9, ease: "easeOut" }}
+          <div
             className="relative flex h-[80vmin] w-[80vmin] items-center justify-center rounded-full border"
             style={{
               borderColor: withAlpha(circleColor, 0.4),
@@ -167,7 +172,7 @@ export function ClockRenderer({ config }: Props) {
                 {date}
               </div>
             </div>
-          </motion.div>
+          </div>
 
           <motion.div
             animate={{ opacity: [0.15, 0.35, 0.15] }}

@@ -115,21 +115,26 @@ export function TextRenderer({ config }: Props) {
         }
       `}</style>
 
+      {/*
+       * initial={false} on the pixel-shift and orientation wrappers stops them
+       * animating from their defaults on mount (the carousel transition in the
+       * renderer page handles entrance). They still animate when their target
+       * values change later - i.e. when the user adjusts orientation, the
+       * text rotates smoothly to the new angle.
+       */}
       <motion.div
+        initial={false}
         animate={{ x: pixelShift.x, y: pixelShift.y }}
         transition={{ duration: PIXEL_SHIFT_DURATION_S, ease: "easeInOut" }}
         className="relative flex h-full w-full items-center justify-center"
       >
         <motion.div
+          initial={false}
           animate={{ rotate, scaleX, scaleY }}
           transition={{ duration: 0.6, ease: "easeInOut" }}
           className="flex h-full w-full items-center justify-center"
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.92, filter: "blur(10px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.95, filter: "blur(6px)" }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
+          <div
             className="cubism-text-content max-w-[80vw] px-8 text-center"
             style={{
               filter: `drop-shadow(0 0 18px ${config.textColor})`,
