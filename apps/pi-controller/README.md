@@ -50,6 +50,13 @@ hologram doesn't use audio output.
    sudo systemctl enable --now cubism-controller
    ```
 
+   The default `ExecStart` uses `/bin/bash -lc 'exec node ...'`, which means
+   systemd launches a login shell as the `pi` user so it can find Node via
+   nvm/fnm/Volta/apt — whichever you used to install it. If you prefer a
+   hardcoded path, run `which node` as the `pi` user (after activating
+   nvm/fnm if applicable) and replace the `ExecStart` line with that
+   absolute path, e.g. `ExecStart=/home/pi/.nvm/versions/node/v22.0.0/bin/node /home/pi/.../dist/index.js`.
+
 4. **Check it's running:**
    ```bash
    systemctl status cubism-controller

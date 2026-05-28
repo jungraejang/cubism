@@ -7,7 +7,12 @@ Wants=network-online.target
 Type=simple
 # Adjust the path if you cloned the repo elsewhere.
 WorkingDirectory=/home/pi/Documents/Projects/cubism/apps/pi-controller
-ExecStart=/usr/bin/node /home/pi/Documents/Projects/cubism/apps/pi-controller/dist/index.js
+
+# Use a login shell so nvm / fnm / Volta / apt-installed Node are all
+# resolvable via PATH. `exec` replaces bash with node so systemd tracks the
+# real main process. If you'd rather hardcode it, run `which node` as the
+# `pi` user and put that absolute path here instead.
+ExecStart=/bin/bash -lc 'exec node /home/pi/Documents/Projects/cubism/apps/pi-controller/dist/index.js'
 
 # Replace <desktop-host> with your desktop's LAN address (where `pnpm dev`
 # or `pnpm start` runs the Cubism socket server on port 3000).
