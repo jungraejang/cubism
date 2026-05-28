@@ -48,25 +48,6 @@ export default function DesktopHomePage() {
   );
   const [autoRotateMs, setAutoRotateMs] = useState<number | null>(null);
 
-  /**
-   * After HMR or when a new module ships, React state may still lack that
-   * module's config entry. Backfill from each manifest's defaultConfig so
-   * Controls never receive `undefined`.
-   */
-  useEffect(() => {
-    setConfigByModule((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const m of modules) {
-        if (next[m.manifest.id] === undefined) {
-          next[m.manifest.id] = m.manifest.defaultConfig;
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, []);
-
   const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
   const deviceId = process.env.NEXT_PUBLIC_DEMO_DEVICE_ID ?? "pi-holo-001";
 
