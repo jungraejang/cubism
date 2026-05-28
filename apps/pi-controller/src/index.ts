@@ -19,6 +19,9 @@ const PRODUCT = process.env.CUBISM_CONTROLLER_PID ?? "8890";
 const SERVER_URL = process.env.CUBISM_SERVER_URL ?? "http://127.0.0.1:3000";
 const DEVICE_ID = process.env.CUBISM_DEVICE_ID ?? "pi-holo-001";
 const USER_ID = process.env.CUBISM_USER_ID ?? "demo-user";
+const DEBUG =
+  process.env.CUBISM_CONTROLLER_DEBUG === "1" ||
+  process.env.CUBISM_CONTROLLER_DEBUG === "true";
 
 const RESCAN_INITIAL_MS = 1_000;
 const RESCAN_MAX_MS = 15_000;
@@ -107,6 +110,11 @@ async function streamDevices(
       const watcher = watchEvdev(
         device.path,
         (event) => {
+          if (DEBUG && event.type !== 0 /* EV_SYN */) {
+            log(
+              `[${device.path}] type=${event.type} code=${event.code} value=${event.value}`,
+            );
+          }
           if (event.type !== EV_KEY) return;
           // Only key-down. Key-up (value=0) and auto-repeat (value=2)
           // would spam multiple emits per detent.
