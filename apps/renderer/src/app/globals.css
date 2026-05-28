@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/*
+ * Tailwind v4 auto-discovery only scans the current Next.js project. Module
+ * components live in @cubism/modules (a workspace package), so we explicitly
+ * point Tailwind at its source files so their class names get generated.
+ */
+@source "../../../../packages/modules/src";
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
