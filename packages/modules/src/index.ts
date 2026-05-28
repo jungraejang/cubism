@@ -1,5 +1,6 @@
 import type { AnyCubismModule } from "./types";
 import { clockModule } from "./clock";
+import { textModule } from "./text";
 
 /**
  * The single source of truth for all registered modules. Adding a new module
@@ -7,8 +8,11 @@ import { clockModule } from "./clock";
  * `defineModule(...)` export here. Both the desktop and renderer apps consume
  * this array - they do not need to know about specific modules.
  */
-export const modules: readonly AnyCubismModule[] = [clockModule];
+export const modules: readonly AnyCubismModule[] = [clockModule, textModule];
 
 export * from "./types";
 export * from "./defineModule";
-export * from "./clock";
+// Per-module exports (clockModule, textModule, their config types, defaults)
+// are intentionally NOT re-exported here to avoid collisions on shared symbol
+// names like `DEFAULT_TEXT_COLOR`. Consumers should import the `modules`
+// array; deep imports use `@cubism/modules/<id>` if explicitly opted into.
