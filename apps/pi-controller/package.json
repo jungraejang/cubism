@@ -1,0 +1,26 @@
+{
+  "name": "@cubism/pi-controller",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cubism/protocol": "workspace:*",
+    "socket.io-client": "latest"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@types/node": "^20",
+    "eslint": "^9",
+    "tsx": "latest",
+    "typescript": "^5",
+    "typescript-eslint": "^8"
+  }
+}

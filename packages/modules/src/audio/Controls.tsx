@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
 import { ROTATION_OPTIONS } from "../_lib/orientation";
 import type { ControlsProps } from "../types";
@@ -15,24 +15,44 @@ import {
   type AudioSource,
   type AudioStreamFrame,
 } from "./config";
-import {
-  startAudioCapture,
-  type AudioCaptureSession,
-  type WaveformFrame,
-} from "./audioCapture";
+import type { WaveformFrame } from "./audioCapture";
 import { drawWaveform } from "./drawWaveform";
+import {
+  getActiveSource,
+  getLastFrame,
+  isCapturing,
+  setFrameSink,
+  startSession,
+  stopSession,
+  subscribeSession,
+} from "./sessionStore";
 
 export function AudioControls({
   config,
   onChange,
   stream,
 }: ControlsProps<AudioModuleConfig>) {
-  const sessionRef = useRef<AudioCaptureSession | null>(null);
-  const [capturing, setCapturing] = useState(false);
+  /**
+   * Subscribes to the module-level session store. The store survives across
+   * Controls mount/unmount cycles, so the capture session (and its
+   * MediaStream / AudioContext) persists when the user switches to another
+   * module and comes back.
+   */
+  const capturing = useSyncExternalStore(
+    subscribeSession,
+    isCapturing,
+    () => false,
+  );
+  const activeSource = useSyncExternalStore(
+    subscribeSession,
+    getActiveSource,
+    () => null,
+  );
+
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const lastFrameRef = useRef<WaveformFrame | null>(null);
+  const lastFrameRef = useRef<WaveformFrame | null>(getLastFrame());
 
   function patch(next: Partial<AudioModuleConfig>) {
     onChange({ ...config, ...next });
@@ -47,45 +67,42 @@ export function AudioControls({
   const rotation = config.rotation ?? 0;
 
   /**
-   * Always stop capture if the Controls unmount - audio capture would
-   * otherwise keep the AudioContext alive across module switches.
+   * Register a frame sink against the store. While Controls is mounted,
+   * each incoming waveform frame is forwarded to the renderer via the
+   * stream prop and stashed for the local preview canvas. When Controls
+   * unmounts (user picks a different module), we clear the sink but leave
+   * the capture session running so the share doesn't have to be redone.
    */
   useEffect(() => {
+    setFrameSink((frame) => {
+      lastFrameRef.current = frame;
+      const frameForWire: AudioStreamFrame = {
+        samples: frame.samples,
+        peak: frame.peak,
+        sentAt: Date.now(),
+      };
+      stream?.emit(frameForWire);
+    });
     return () => {
-      sessionRef.current?.stop();
-      sessionRef.current = null;
+      setFrameSink(null);
     };
-  }, []);
+  }, [stream]);
 
   async function handleStart(source: AudioSource) {
     if (busy) return;
     setBusy(true);
     setStatus("Requesting audio source…");
     try {
-      sessionRef.current?.stop();
-      sessionRef.current = null;
-      const session = await startAudioCapture(source, (frame) => {
-        lastFrameRef.current = frame;
-        const frameForWire: AudioStreamFrame = {
-          samples: frame.samples,
-          peak: frame.peak,
-          sentAt: Date.now(),
-        };
-        stream?.emit(frameForWire);
-      });
-      sessionRef.current = session;
-      setCapturing(true);
+      await startSession(source);
       setStatus(
         source === "display"
           ? "Capturing system / tab audio."
           : "Capturing microphone.",
       );
-      // Remember the source so it'll be the default next time.
       if (config.preferredSource !== source) {
         patch({ preferredSource: source });
       }
     } catch (err) {
-      setCapturing(false);
       setStatus(err instanceof Error ? err.message : "Could not start capture.");
     } finally {
       setBusy(false);
@@ -93,10 +110,8 @@ export function AudioControls({
   }
 
   function handleStop() {
-    sessionRef.current?.stop();
-    sessionRef.current = null;
+    stopSession();
     lastFrameRef.current = null;
-    setCapturing(false);
     setStatus("Capture stopped.");
   }
 
@@ -154,8 +169,7 @@ export function AudioControls({
 
         <div className="mt-3 flex flex-wrap gap-2">
           {AUDIO_SOURCE_OPTIONS.map((option) => {
-            const isActive =
-              capturing && sessionRef.current?.source === option.value;
+            const isActive = capturing && activeSource === option.value;
             return (
               <motion.button
                 key={option.value}

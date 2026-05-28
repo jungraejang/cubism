@@ -1,4 +1,11 @@
-export type ClientRole = "desktop" | "renderer";
+export type ClientRole = "desktop" | "renderer" | "controller";
+
+/**
+ * Hardware controller actions. Currently only the volume-knob rotation is
+ * mapped, but we leave the union open so we can later add macro-key and
+ * knob-press events without another protocol bump.
+ */
+export type ControllerAction = "next" | "prev";
 
 export type DeviceStatus = "online" | "offline";
 
@@ -39,6 +46,17 @@ export type ServerToClientEvents = {
     deviceId: string;
     data: unknown;
   }) => void;
+
+  /**
+   * Hardware controller (e.g. Pi-side volume knob) input relayed to the
+   * desktop control panel. The server fans this out to every socket in the
+   * controller's user room.
+   */
+  "controller:input": (payload: {
+    deviceId: string;
+    action: ControllerAction;
+    timestamp: string;
+  }) => void;
 };
 
 export type ClientToServerEvents = {
@@ -69,6 +87,16 @@ export type ClientToServerEvents = {
     moduleId: string;
     deviceId: string;
     data: unknown;
+  }) => void;
+
+  /**
+   * Controller-emitted hardware input. The server relays it to the
+   * controller's user room as `controller:input` (server-to-client).
+   */
+  "controller:input": (payload: {
+    deviceId: string;
+    action: ControllerAction;
+    timestamp: string;
   }) => void;
 };
 

@@ -76,11 +76,29 @@ export default function DesktopHomePage() {
       console.log("Command ack:", payload);
     });
 
+    /**
+     * Hardware controller input (Pi-side volume knob). The server fans this
+     * out to the user room; filter by deviceId so a multi-hologram setup
+     * doesn't cross the streams. The existing auto-send useEffect picks up
+     * the new selectedId and pushes the module to the renderer for free.
+     */
+    socket.on("controller:input", (payload) => {
+      if (payload.deviceId !== deviceId) return;
+      setSelectedId((prev) => {
+        if (modules.length === 0) return prev;
+        const idx = modules.findIndex((m) => m.manifest.id === prev);
+        const delta = payload.action === "next" ? 1 : -1;
+        const nextIdx = (idx + delta + modules.length) % modules.length;
+        return modules[nextIdx].manifest.id;
+      });
+    });
+
     return () => {
       socket.off("connect");
       socket.off("disconnect");
       socket.off("device:status");
       socket.off("command:ack");
+      socket.off("controller:input");
       socket.disconnect();
     };
   }, [socket, userId, deviceId]);

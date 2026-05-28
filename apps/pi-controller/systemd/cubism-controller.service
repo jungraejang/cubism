@@ -1,0 +1,24 @@
+[Unit]
+Description=Cubism input controller (volume-knob module selector)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust the path if you cloned the repo elsewhere.
+WorkingDirectory=/home/pi/Documents/Projects/cubism/apps/pi-controller
+ExecStart=/usr/bin/node /home/pi/Documents/Projects/cubism/apps/pi-controller/dist/index.js
+
+# Replace <desktop-host> with your desktop's LAN address (where `pnpm dev`
+# or `pnpm start` runs the Cubism socket server on port 3000).
+Environment=CUBISM_SERVER_URL=http://<desktop-host>:3000
+Environment=CUBISM_DEVICE_ID=pi-holo-001
+Environment=CUBISM_USER_ID=demo-user
+
+Restart=always
+RestartSec=2
+User=pi
+SupplementaryGroups=input
+
+[Install]
+WantedBy=multi-user.target

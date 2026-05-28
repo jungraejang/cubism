@@ -69,6 +69,13 @@ async function main() {
         socket.join(`user:${payload.userId}`);
         console.log(`[socket] desktop registered for user: ${payload.userId}`);
       }
+
+      if (payload.role === "controller" && payload.userId) {
+        socket.join(`user:${payload.userId}`);
+        console.log(
+          `[socket] controller registered for user: ${payload.userId}`,
+        );
+      }
     });
 
     socket.on("device:heartbeat", (payload) => {
@@ -105,6 +112,22 @@ async function main() {
         deviceId: payload.deviceId,
         data: payload.data,
       });
+    });
+
+    /**
+     * Pi-side hardware controller input (volume knob). Relayed to every
+     * desktop control panel registered to the same user so the UI can
+     * advance the selected module. Filters by deviceId on the client.
+     */
+    socket.on("controller:input", (payload) => {
+      const userId = socket.data.userId;
+      if (!userId) {
+        console.warn(
+          "[socket] controller:input from unregistered client, dropping",
+        );
+        return;
+      }
+      io.to(`user:${userId}`).emit("controller:input", payload);
     });
 
     socket.on("disconnect", () => {
