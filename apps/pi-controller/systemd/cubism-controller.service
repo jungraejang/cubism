@@ -8,11 +8,17 @@ Type=simple
 # Adjust the path if you cloned the repo elsewhere.
 WorkingDirectory=/home/pi/Documents/Projects/cubism/apps/pi-controller
 
-# Use a login shell so nvm / fnm / Volta / apt-installed Node are all
-# resolvable via PATH. `exec` replaces bash with node so systemd tracks the
-# real main process. If you'd rather hardcode it, run `which node` as the
-# `pi` user and put that absolute path here instead.
-ExecStart=/bin/bash -lc 'exec node /home/pi/Documents/Projects/cubism/apps/pi-controller/dist/index.js'
+# Node lives wherever your install method put it. Pick ONE of the two
+# ExecStart lines below.
+#
+# Option A (recommended for nvm users): source nvm explicitly so the unit
+# keeps working after `nvm install`/`nvm use` swaps the active version.
+ExecStart=/bin/bash -c 'export NVM_DIR="/home/pi/.nvm"; . "$NVM_DIR/nvm.sh"; exec node /home/pi/Documents/Projects/cubism/apps/pi-controller/dist/index.js'
+#
+# Option B: hardcode the absolute path. Faster startup, but you must update
+# this line whenever you `nvm install` a new Node version.
+# Run `which node` as the `pi` user to confirm the path.
+# ExecStart=/home/pi/.nvm/versions/node/v24.16.0/bin/node /home/pi/Documents/Projects/cubism/apps/pi-controller/dist/index.js
 
 # Replace <desktop-host> with your desktop's LAN address (where `pnpm dev`
 # or `pnpm start` runs the Cubism socket server on port 3000).
