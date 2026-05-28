@@ -12,7 +12,7 @@ import {
   watchEvdev,
   type EvdevWatcher,
 } from "./evdev.js";
-import { findDeviceByVidPid, type FoundDevice } from "./findDevice.js";
+import { findDevicesByVidPid, type FoundDevice } from "./findDevice.js";
 
 const VENDOR = process.env.CUBISM_CONTROLLER_VID ?? "1189";
 const PRODUCT = process.env.CUBISM_CONTROLLER_PID ?? "8890";
@@ -71,51 +71,70 @@ function emitAction(socket: ControllerSocket, action: ControllerAction) {
 }
 
 /**
- * Open the device and stream keypresses through the socket. Returns when
- * the device stops emitting events (unplugged / closed) so the outer loop
- * can re-discover it.
+ * Open every matching HID interface and stream keypresses through the
+ * socket. Composite keyboards expose multiple event nodes and the knob can
+ * be on any of them, so we watch them all in parallel rather than guess.
+ * Returns when **all** watched streams close (e.g. the dongle was unplugged)
+ * so the outer loop can re-discover it.
  */
-async function streamDevice(
-  device: FoundDevice,
+async function streamDevices(
+  devices: FoundDevice[],
   socket: ControllerSocket,
 ): Promise<void> {
-  log(`watching ${device.path} (${device.name})`);
+  log(
+    `watching ${devices.length} interface(s): ${devices.map((d) => d.path).join(", ")}`,
+  );
 
   return new Promise((resolve) => {
-    let watcher: EvdevWatcher | null = null;
+    const watchers: EvdevWatcher[] = [];
+    let openCount = devices.length;
+    let settled = false;
 
     function settle() {
-      watcher?.close();
-      watcher = null;
+      if (settled) return;
+      settled = true;
+      for (const w of watchers) {
+        try {
+          w.close();
+        } catch {
+          // ignore
+        }
+      }
       resolve();
     }
 
-    watcher = watchEvdev(
-      device.path,
-      (event) => {
-        if (event.type !== EV_KEY) return;
-        // Only key-down. Key-up (value=0) and auto-repeat (value=2) would
-        // spam multiple emits per detent.
-        if (event.value !== 1) return;
-        if (event.code === KEY_VOLUMEUP) {
-          emitAction(socket, "next");
-        } else if (event.code === KEY_VOLUMEDOWN) {
-          emitAction(socket, "prev");
-        }
-      },
-      (reason, err) => {
-        log(`evdev stream closed (${reason})${err ? `: ${err.message}` : ""}`);
-        settle();
-      },
-    );
+    for (const device of devices) {
+      const watcher = watchEvdev(
+        device.path,
+        (event) => {
+          if (event.type !== EV_KEY) return;
+          // Only key-down. Key-up (value=0) and auto-repeat (value=2)
+          // would spam multiple emits per detent.
+          if (event.value !== 1) return;
+          if (event.code === KEY_VOLUMEUP) {
+            emitAction(socket, "next");
+          } else if (event.code === KEY_VOLUMEDOWN) {
+            emitAction(socket, "prev");
+          }
+        },
+        (reason, err) => {
+          log(
+            `evdev stream closed: ${device.path} (${reason})${err ? `: ${err.message}` : ""}`,
+          );
+          openCount -= 1;
+          if (openCount <= 0) settle();
+        },
+      );
+      watchers.push(watcher);
+    }
   });
 }
 
-async function discoverDevice(): Promise<FoundDevice> {
+async function discoverDevices(): Promise<FoundDevice[]> {
   let delay = RESCAN_INITIAL_MS;
   while (true) {
-    const device = await findDeviceByVidPid(VENDOR, PRODUCT);
-    if (device) return device;
+    const devices = await findDevicesByVidPid(VENDOR, PRODUCT);
+    if (devices.length > 0) return devices;
 
     log(
       `no device with VID:PID ${VENDOR}:${PRODUCT} found; retrying in ${delay}ms`,
@@ -146,10 +165,10 @@ async function main() {
   // Outer loop: re-discover the device whenever we lose the stream
   // (kernel close, dongle unplug, USB reset, etc.).
   while (!shuttingDown) {
-    const device = await discoverDevice();
-    await streamDevice(device, socket);
+    const devices = await discoverDevices();
+    await streamDevices(devices, socket);
     if (shuttingDown) break;
-    log("device stream ended, rescanning");
+    log("all device streams ended, rescanning");
     await sleep(RESCAN_INITIAL_MS);
   }
 }

@@ -23,10 +23,10 @@ export type FoundDevice = {
   name: string;
 };
 
-export async function findDeviceByVidPid(
+export async function findDevicesByVidPid(
   vendorHex: string,
   productHex: string,
-): Promise<FoundDevice | null> {
+): Promise<FoundDevice[]> {
   const wantVendor = vendorHex.toLowerCase().replace(/^0+/, "") || "0";
   const wantProduct = productHex.toLowerCase().replace(/^0+/, "") || "0";
 
@@ -34,7 +34,7 @@ export async function findDeviceByVidPid(
   try {
     entries = await readdir(SYSFS_INPUT_ROOT);
   } catch {
-    return null;
+    return [];
   }
 
   const eventDirs = entries.filter((name) => /^event\d+$/.test(name));
@@ -70,16 +70,13 @@ export async function findDeviceByVidPid(
     });
   }
 
-  if (candidates.length === 0) return null;
-
   /*
-   * Prefer the "main" interface. Many composite HID keyboards expose
-   * several event nodes (keyboard, mouse, system control, consumer control).
-   * The keyboard interface usually has the shortest/cleanest name (e.g.
-   * "HID 1189:8890") while extras get suffixes like "Mouse", "Consumer
-   * Control", "System Control". The user's evtest output showed the volume
-   * codes live on the bare-name interface (event9), so we pick that.
+   * Return every matching interface. Composite HID keyboards expose several
+   * event nodes (keyboard, mouse, system control, consumer control); the
+   * volume knob may live on any of them, and identifying it reliably from
+   * sysfs alone is brittle. The caller watches all of them in parallel so
+   * whichever interface actually emits VOLUMEUP/VOLUMEDOWN gets through.
    */
-  candidates.sort((a, b) => a.name.length - b.name.length);
-  return candidates[0];
+  candidates.sort((a, b) => a.path.localeCompare(b.path));
+  return candidates;
 }
