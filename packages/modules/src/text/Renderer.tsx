@@ -9,6 +9,7 @@ import {
   usePixelShift,
 } from "../_lib/usePixelShift";
 import { fontSizeToVmin, type TextModuleConfig } from "./config";
+import { richTextContentCss } from "./richTextStyles";
 
 type Props = {
   config: TextModuleConfig;
@@ -41,7 +42,7 @@ const SANITIZE_CONFIG: Config = {
     "pre",
     "blockquote",
   ],
-  ALLOWED_ATTR: ["src", "alt", "style", "href", "title"],
+  ALLOWED_ATTR: ["src", "alt", "style", "href", "title", "class"],
   ALLOWED_URI_REGEXP: /^(https?:|data:image\/)/i,
 };
 
@@ -68,52 +69,13 @@ export function TextRenderer({ config }: Props) {
        * scope makes everything (headings, lists, images) scale with the
        * root font-size set on the wrapper.
        */}
-      <style>{`
-        .cubism-text-content {
-          font-size: ${baseSize};
-          color: ${config.textColor};
-          line-height: 1.25;
-        }
-        .cubism-text-content :is(h1, h2, h3) {
-          font-weight: 700;
-          line-height: 1.1;
-          margin: 0.2em 0;
-        }
-        .cubism-text-content h1 { font-size: 1.8em; }
-        .cubism-text-content h2 { font-size: 1.4em; }
-        .cubism-text-content h3 { font-size: 1.15em; }
-        .cubism-text-content p { margin: 0.25em 0; }
-        .cubism-text-content strong { font-weight: 700; }
-        .cubism-text-content em { font-style: italic; }
-        .cubism-text-content u { text-decoration: underline; }
-        .cubism-text-content s { text-decoration: line-through; }
-        .cubism-text-content ul { list-style: disc; padding-left: 1.5em; text-align: left; }
-        .cubism-text-content ol { list-style: decimal; padding-left: 1.5em; text-align: left; }
-        .cubism-text-content li { margin: 0.1em 0; }
-        .cubism-text-content blockquote {
-          border-left: 0.15em solid currentColor;
-          padding-left: 0.6em;
-          opacity: 0.85;
-          margin: 0.3em 0;
-        }
-        .cubism-text-content code {
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-          background: rgba(255,255,255,0.08);
-          padding: 0.05em 0.3em;
-          border-radius: 0.25em;
-        }
-        .cubism-text-content img {
-          max-width: 80%;
-          max-height: 50vh;
-          display: inline-block;
-          vertical-align: middle;
-          border-radius: 0.5em;
-        }
-        .cubism-text-content a {
-          color: inherit;
-          text-decoration: underline;
-        }
-      `}</style>
+      <style>
+        {richTextContentCss(
+          ".cubism-text-content",
+          baseSize,
+          config.textColor,
+        )}
+      </style>
 
       {/*
        * initial={false} on the pixel-shift and orientation wrappers stops them

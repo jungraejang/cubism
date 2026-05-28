@@ -18,6 +18,10 @@ import {
   type FontSize,
   type TextModuleConfig,
 } from "./config";
+import {
+  RICH_TEXT_EDITOR_EXTRA_CSS,
+  richTextContentCss,
+} from "./richTextStyles";
 
 type ToolbarButtonProps = {
   onClick: () => void;
@@ -103,7 +107,14 @@ function EditorToolbar({ editor }: { editor: Editor }) {
   function insertImage() {
     const url = imageUrl.trim();
     if (!url) return;
-    editor.chain().focus().setImage({ src: url, alt: "image" }).run();
+    // Block image + trailing empty paragraph so the user can press Enter or
+    // type to add space above/below the GIF.
+    editor
+      .chain()
+      .focus()
+      .setImage({ src: url, alt: "" })
+      .insertContent("<p></p>")
+      .run();
     setImageUrl("");
     setImageOpen(false);
   }
@@ -348,8 +359,12 @@ export function TextControls({
       Underline,
       TextStyle,
       Color,
-      Image.configure({ inline: true, allowBase64: false }),
-      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Image.configure({
+        inline: false,
+        allowBase64: false,
+        HTMLAttributes: { class: "cubism-rich-text-img" },
+      }),
+      TextAlign.configure({ types: ["heading", "paragraph", "image"] }),
     ],
     content: config.html,
     editorProps: {
@@ -369,8 +384,15 @@ export function TextControls({
 
   const rotation = config.rotation ?? 0;
 
+  const editorPreviewCss = richTextContentCss(
+    ".prose-cubism .ProseMirror",
+    "0.875rem",
+    config.textColor,
+  );
+
   return (
     <div className="flex flex-col gap-4">
+      <style>{`${editorPreviewCss}${RICH_TEXT_EDITOR_EXTRA_CSS}`}</style>
       {editor && <EditorToolbar editor={editor} />}
 
       <EditorContent editor={editor} />
