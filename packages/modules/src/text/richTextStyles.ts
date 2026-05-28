@@ -8,6 +8,8 @@ export function richTextContentCss(scope: string, baseSize: string, textColor: s
       font-size: ${baseSize};
       color: ${textColor};
       line-height: 1.35;
+      /* Glow for hologram text only — text-shadow does not outline images/GIFs. */
+      text-shadow: 0 0 18px ${textColor};
     }
     ${scope} :is(h1, h2, h3) {
       font-weight: 700;
@@ -56,6 +58,8 @@ export function richTextContentCss(scope: string, baseSize: string, textColor: s
       border: none !important;
       outline: none !important;
       box-shadow: none !important;
+      text-shadow: none !important;
+      filter: none !important;
       max-width: 80%;
       max-height: 50vh;
       height: auto;
@@ -79,7 +83,7 @@ export const RICH_TEXT_EDITOR_EXTRA_CSS = `
   .prose-cubism .ProseMirror img.ProseMirror-selectednode {
     outline: none !important;
     border: none !important;
-    box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.45) !important;
+    box-shadow: none !important;
   }
   .prose-cubism .ProseMirror:focus {
     outline: none;

@@ -98,9 +98,6 @@ export function TextRenderer({ config }: Props) {
         >
           <div
             className="cubism-text-content max-w-[80vw] px-8 text-center"
-            style={{
-              filter: `drop-shadow(0 0 18px ${config.textColor})`,
-            }}
             dangerouslySetInnerHTML={{ __html: sanitized }}
           />
         </motion.div>
