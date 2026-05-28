@@ -25,14 +25,44 @@ export type ModuleManifest<TConfig> = {
 };
 
 /**
+ * Lightweight pub/sub for low-latency streams that should NOT travel through
+ * the per-keystroke config flow (e.g. audio waveform samples).
+ *
+ * The desktop's Controls calls `emit` repeatedly with module-specific data;
+ * the renderer subscribes to a matching channel via its own RendererProps.
+ * Payloads are typed `unknown` because each module defines its own shape.
+ */
+export type ModuleStream = {
+  /** Push one frame of real-time data to the renderer. */
+  emit: (data: unknown) => void;
+};
+
+/**
  * Props every module's desktop Controls component receives. The component is
  * fully controlled: it never owns state, just emits changes via `onChange`.
  * The hosting desktop app stores the config map and decides when to dispatch
  * it over the socket.
+ *
+ * `stream` is optional: modules that don't need real-time streaming can
+ * ignore it. When present, modules can emit data to the renderer at a much
+ * higher rate than config updates (no Zod validation, no debounce).
  */
 export type ControlsProps<TConfig> = {
   config: TConfig;
   onChange: (next: TConfig) => void;
+  stream?: ModuleStream;
+};
+
+/**
+ * Props every module's Renderer component receives.
+ *
+ * `streamData` is the latest payload emitted via `ModuleStream.emit` from the
+ * desktop, validated to be of type `TStream` (defaults to unknown). Modules
+ * that don't use streaming can ignore this prop.
+ */
+export type RendererProps<TConfig, TStream = unknown> = {
+  config: TConfig;
+  streamData?: TStream;
 };
 
 /**
@@ -44,7 +74,7 @@ export type CubismModule<TConfig = unknown> = {
   manifest: ModuleManifest<TConfig>;
   configSchema: ZodType<TConfig>;
   Controls: ComponentType<ControlsProps<TConfig>>;
-  Renderer: ComponentType<{ config: TConfig }>;
+  Renderer: ComponentType<RendererProps<TConfig>>;
 };
 
 /**

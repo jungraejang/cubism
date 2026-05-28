@@ -95,6 +95,18 @@ async function main() {
       });
     });
 
+    /**
+     * Realtime stream relay. Intentionally not logged - this fires many
+     * times per second (e.g. audio waveform frames at 30+ fps).
+     */
+    socket.on("module:stream-to-device", (payload) => {
+      io.to(`device:${payload.deviceId}`).emit("module:stream", {
+        moduleId: payload.moduleId,
+        deviceId: payload.deviceId,
+        data: payload.data,
+      });
+    });
+
     socket.on("disconnect", () => {
       console.log("[socket] disconnected:", socket.id);
 

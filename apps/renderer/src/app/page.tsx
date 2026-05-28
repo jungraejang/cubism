@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
 import { modules, type AnyCubismModule } from "@cubism/modules";
@@ -14,8 +14,25 @@ export default function RendererHomePage() {
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
   const [active, setActive] = useState<ActiveModule | null>(null);
+  /**
+   * Latest stream payload for the currently active module. Stored as state
+   * (not just a ref) so module Renderers re-render when new frames arrive.
+   * Only kept for the active module - frames for any other module are
+   * discarded since they'd be invisible anyway.
+   */
+  const [streamData, setStreamData] = useState<unknown>(undefined);
+  /**
+   * The active module id mirrored into a ref so the high-frequency
+   * `module:stream` handler can filter without re-binding on every state
+   * change.
+   */
+  const activeIdRef = useRef<string | null>(null);
 
   const deviceId = process.env.NEXT_PUBLIC_DEVICE_ID ?? "pi-holo-001";
+
+  useEffect(() => {
+    activeIdRef.current = active?.module.manifest.id ?? null;
+  }, [active]);
 
   useEffect(() => {
     socket.connect();
@@ -51,7 +68,14 @@ export default function RendererHomePage() {
         return;
       }
 
-      setActive({ module: mod, config: parsed.data });
+      setActive((prev) => {
+        // Reset stream data when switching modules so a new module doesn't
+        // briefly render with stale frames from the previous one.
+        if (!prev || prev.module.manifest.id !== mod.manifest.id) {
+          setStreamData(undefined);
+        }
+        return { module: mod, config: parsed.data };
+      });
 
       socket.emit("device:heartbeat", {
         deviceId,
@@ -60,10 +84,16 @@ export default function RendererHomePage() {
       });
     });
 
+    socket.on("module:stream", (payload) => {
+      if (payload.moduleId !== activeIdRef.current) return;
+      setStreamData(payload.data);
+    });
+
     return () => {
       socket.off("connect");
       socket.off("disconnect");
       socket.off("module:display");
+      socket.off("module:stream");
       socket.disconnect();
     };
   }, [socket, deviceId]);
@@ -132,7 +162,7 @@ export default function RendererHomePage() {
             transition={CAROUSEL.transition}
             className="absolute inset-0"
           >
-            <ActiveRenderer config={active.config} />
+            <ActiveRenderer config={active.config} streamData={streamData} />
           </motion.div>
         ) : (
           <motion.main

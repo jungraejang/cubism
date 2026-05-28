@@ -18,8 +18,8 @@ export const textManifest: ModuleManifest<TextModuleConfig> = {
     fontSize: "md",
     textColor: DEFAULT_TEXT_COLOR,
     bgColor: DEFAULT_BG_COLOR,
-    rotation: 0,
-    flipHorizontal: false,
+    rotation: 180,
+    flipHorizontal: true,
     flipVertical: false,
   },
 };

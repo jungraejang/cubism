@@ -3,10 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { orientationTransform } from "../_lib/orientation";
-import {
-  PIXEL_SHIFT_DURATION_S,
-  usePixelShift,
-} from "../_lib/usePixelShift";
+import { PIXEL_SHIFT_DURATION_S, usePixelShift } from "../_lib/usePixelShift";
 import { withAlpha } from "../_lib/withAlpha";
 import {
   DEFAULT_ACCENT_COLOR,

@@ -7,7 +7,6 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
 import Image from "@tiptap/extension-image";
 import TextAlign from "@tiptap/extension-text-align";
-import Underline from "@tiptap/extension-underline";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import { motion } from "framer-motion";
 
@@ -107,14 +106,13 @@ function EditorToolbar({ editor }: { editor: Editor }) {
   function insertImage() {
     const url = imageUrl.trim();
     if (!url) return;
-    // Block image + trailing empty paragraph so the user can press Enter or
-    // type to add space above/below the GIF.
-    editor
-      .chain()
-      .focus()
-      .setImage({ src: url, alt: "" })
-      .insertContent("<p></p>")
-      .run();
+    // Using insertContent with raw HTML is more forgiving than setImage().
+    // It works regardless of the current selection (headings, lists, mid-
+    // paragraph), and the trailing <p></p> guarantees a usable line below
+    // for adding space or more text after the GIF.
+    const safeUrl = url.replace(/"/g, "&quot;");
+    const html = `<img src="${safeUrl}" alt="" /><p></p>`;
+    editor.chain().focus().insertContent(html).run();
     setImageUrl("");
     setImageOpen(false);
   }
@@ -355,8 +353,10 @@ export function TextControls({
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
+      // StarterKit already includes Underline, Bold, Italic, Strike, Headings,
+      // Lists, Blockquote, etc. Registering Underline separately produced a
+      // 'duplicate extension' warning in newer Tiptap versions.
       StarterKit,
-      Underline,
       TextStyle,
       Color,
       Image.configure({
@@ -364,7 +364,7 @@ export function TextControls({
         allowBase64: false,
         HTMLAttributes: { class: "cubism-rich-text-img" },
       }),
-      TextAlign.configure({ types: ["heading", "paragraph", "image"] }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
     ],
     content: config.html,
     editorProps: {

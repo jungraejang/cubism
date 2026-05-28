@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
-import { modules } from "@cubism/modules";
+import { modules, randomId, type ModuleStream } from "@cubism/modules";
 
 type DeviceStatus = "online" | "offline" | "unknown";
 
@@ -92,6 +92,35 @@ export default function DesktopHomePage() {
     configByModule[selected.manifest.id] ?? selected.manifest.defaultConfig;
 
   /**
+   * Stream API given to the active module's Controls. Modules use this to
+   * push real-time payloads (e.g. audio waveform samples) directly to the
+   * renderer, bypassing the debounced config channel. The moduleId is bound
+   * to the currently selected module so an emit can never leak to another.
+   */
+  const stream = useMemo<ModuleStream>(() => {
+    return {
+      emit: (data) => {
+        if (!connected) return;
+        socket.emit("module:stream-to-device", {
+          moduleId: selected.manifest.id,
+          deviceId,
+          data,
+        });
+      },
+    };
+  }, [connected, socket, selected.manifest.id, deviceId]);
+
+  const handleControlsChange = useCallback(
+    (next: unknown) => {
+      setConfigByModule((prev) => ({
+        ...prev,
+        [selected.manifest.id]: next,
+      }));
+    },
+    [selected.manifest.id],
+  );
+
+  /**
    * Auto-send: any time the selected module or its config changes, push the
    * latest payload to the renderer after a short debounce. Switching modules
    * causes an immediate (post-debounce) send so the renderer flips to the
@@ -104,7 +133,7 @@ export default function DesktopHomePage() {
     if (!connected) return;
     const timer = window.setTimeout(() => {
       socket.emit("module:send-to-device", {
-        commandId: crypto.randomUUID(),
+        commandId: randomId(),
         deviceId,
         moduleId: selected.manifest.id,
         config: currentConfig,
@@ -291,12 +320,8 @@ export default function DesktopHomePage() {
           <div className="mt-4">
             <SelectedControls
               config={currentConfig}
-              onChange={(next) =>
-                setConfigByModule((prev) => ({
-                  ...prev,
-                  [selected.manifest.id]: next,
-                }))
-              }
+              onChange={handleControlsChange}
+              stream={stream}
             />
           </div>
         </motion.section>

@@ -3,6 +3,7 @@ import { clockModule } from "./clock";
 import { textModule } from "./text";
 import { weatherModule } from "./weather";
 import { spotifyModule } from "./spotify";
+import { audioModule } from "./audio";
 
 /**
  * The single source of truth for all registered modules. Adding a new module
@@ -15,10 +16,12 @@ export const modules: readonly AnyCubismModule[] = [
   textModule,
   weatherModule,
   spotifyModule,
+  audioModule,
 ];
 
 export * from "./types";
 export * from "./defineModule";
+export { randomId } from "./_lib/randomId";
 // Per-module exports (clockModule, textModule, their config types, defaults)
 // are intentionally NOT re-exported here to avoid collisions on shared symbol
 // names like `DEFAULT_TEXT_COLOR`. Consumers should import the `modules`

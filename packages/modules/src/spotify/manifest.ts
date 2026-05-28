@@ -21,8 +21,8 @@ export const spotifyManifest: ModuleManifest<SpotifyModuleConfig> = {
     accentColor: DEFAULT_ACCENT_COLOR,
     textColor: DEFAULT_TEXT_COLOR,
     detailColor: DEFAULT_DETAIL_COLOR,
-    rotation: 0,
-    flipHorizontal: false,
+    rotation: 180,
+    flipHorizontal: true,
     flipVertical: false,
   },
 };

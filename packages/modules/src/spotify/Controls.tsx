@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ROTATION_OPTIONS } from "../_lib/orientation";
+import { randomId } from "../_lib/randomId";
 import type { ControlsProps } from "../types";
+
+/**
+ * NEXT_PUBLIC_* env vars are statically replaced by Next.js at build time, so
+ * `process` doesn't need to exist at runtime. We declare just enough of it
+ * here to satisfy TypeScript in the modules package, which doesn't pull in
+ * `@types/node`.
+ */
+declare const process: { env: Record<string, string | undefined> };
 import {
   DEFAULT_ACCENT_COLOR,
   DEFAULT_DETAIL_COLOR,
@@ -18,6 +27,18 @@ type AuthMessage = {
   state?: string | null;
   error?: string | null;
 };
+
+/** Small pill rendered next to a field whose value came from a NEXT_PUBLIC_ env. */
+function EnvBadge() {
+  return (
+    <span
+      title="Loaded from environment variable"
+      className="rounded bg-cyan-400/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cyan-300"
+    >
+      from env
+    </span>
+  );
+}
 
 /**
  * Builds the redirect URI for Spotify. As of 2025, Spotify rejects `localhost`
@@ -59,6 +80,16 @@ export function SpotifyControls({
   const [redirectUri, setRedirectUri] = useState("");
   const stateRef = useRef<string | null>(null);
 
+  /**
+   * Optional env-supplied defaults for the Spotify credentials. `NEXT_PUBLIC_*`
+   * means these are inlined into the desktop bundle at build time, so they
+   * are available here in the browser. The Controls component prefills empty
+   * config fields with these values on mount so the user doesn't have to
+   * paste credentials every time they open the panel.
+   */
+  const envClientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ?? "";
+  const envClientSecret = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_SECRET ?? "";
+
   useEffect(() => {
     setRedirectUri(getRedirectUri());
   }, []);
@@ -72,9 +103,40 @@ export function SpotifyControls({
     configRef.current = config;
   }, [config]);
 
+  /**
+   * One-time prefill of env credentials when the stored config has none.
+   * Patches go through onChange so the renderer also receives them.
+   *
+   * The effect guards against re-applying on every render by comparing the
+   * current ref. We only patch when a field is actually empty.
+   */
+  const envAppliedRef = useRef(false);
+  useEffect(() => {
+    if (envAppliedRef.current) return;
+    if (!envClientId && !envClientSecret) {
+      envAppliedRef.current = true;
+      return;
+    }
+    const current = configRef.current;
+    const next: Partial<SpotifyModuleConfig> = {};
+    if (envClientId && !current.clientId) next.clientId = envClientId;
+    if (envClientSecret && !current.clientSecret) {
+      next.clientSecret = envClientSecret;
+    }
+    if (Object.keys(next).length > 0) {
+      onChange({ ...current, ...next });
+    }
+    envAppliedRef.current = true;
+  }, [envClientId, envClientSecret, onChange]);
+
   function patch(next: Partial<SpotifyModuleConfig>) {
     onChange({ ...config, ...next });
   }
+
+  const clientIdFromEnv =
+    !!envClientId && config.clientId === envClientId;
+  const clientSecretFromEnv =
+    !!envClientSecret && config.clientSecret === envClientSecret;
 
   const accentColor = config.accentColor ?? DEFAULT_ACCENT_COLOR;
   const textColor = config.textColor ?? DEFAULT_TEXT_COLOR;
@@ -154,7 +216,7 @@ export function SpotifyControls({
       return;
     }
     if (!redirectUri) return;
-    const state = crypto.randomUUID();
+    const state = randomId();
     stateRef.current = state;
     setBusy(true);
     setStatus("Opening Spotify…");
@@ -181,10 +243,41 @@ export function SpotifyControls({
 
   function copyRedirectUri() {
     if (!redirectUri) return;
-    void navigator.clipboard.writeText(redirectUri).then(
-      () => setStatus("Redirect URI copied to clipboard."),
-      () => setStatus("Could not copy — select the URI and copy manually."),
-    );
+    // navigator.clipboard is only available in secure contexts (HTTPS or
+    // localhost). On a LAN-IP origin we fall back to the legacy execCommand
+    // path so the Copy button still works.
+    const useClipboardApi =
+      typeof navigator !== "undefined" &&
+      typeof window !== "undefined" &&
+      window.isSecureContext &&
+      !!navigator.clipboard?.writeText;
+
+    if (useClipboardApi) {
+      void navigator.clipboard.writeText(redirectUri).then(
+        () => setStatus("Redirect URI copied to clipboard."),
+        () => setStatus("Could not copy — select the URI and copy manually."),
+      );
+      return;
+    }
+
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = redirectUri;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setStatus(
+        ok
+          ? "Redirect URI copied to clipboard."
+          : "Could not copy — select the URI and copy manually.",
+      );
+    } catch {
+      setStatus("Could not copy — select the URI and copy manually.");
+    }
   }
 
   return (
@@ -237,7 +330,10 @@ export function SpotifyControls({
 
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-zinc-400">Client ID</span>
+          <span className="flex items-center gap-2 text-zinc-400">
+            Client ID
+            {clientIdFromEnv ? <EnvBadge /> : null}
+          </span>
           <input
             type="text"
             autoComplete="off"
@@ -250,7 +346,10 @@ export function SpotifyControls({
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-zinc-400">Client Secret</span>
+          <span className="flex items-center gap-2 text-zinc-400">
+            Client Secret
+            {clientSecretFromEnv ? <EnvBadge /> : null}
+          </span>
           <input
             type="password"
             autoComplete="off"
@@ -262,6 +361,13 @@ export function SpotifyControls({
             }
           />
         </label>
+        {envClientId || envClientSecret ? (
+          <p className="text-xs text-zinc-500">
+            Loaded from <code>NEXT_PUBLIC_SPOTIFY_CLIENT_*</code> in your
+            desktop <code>.env.local</code>. Edit the fields above to override
+            for this session.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

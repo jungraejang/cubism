@@ -16,8 +16,8 @@ export const clockManifest: ModuleManifest<ClockModuleConfig> = {
   defaultConfig: {
     format: "12h",
     showSeconds: true,
-    rotation: 0,
-    flipHorizontal: false,
+    rotation: 180,
+    flipHorizontal: true,
     flipVertical: false,
     circleColor: DEFAULT_CIRCLE_COLOR,
     textColor: DEFAULT_TEXT_COLOR,

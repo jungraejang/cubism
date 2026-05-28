@@ -28,6 +28,17 @@ export type ServerToClientEvents = {
     status: "received" | "running" | "complete" | "error";
     error?: string;
   }) => void;
+
+  /**
+   * High-frequency real-time stream from the desktop to a renderer device.
+   * Used by modules that need to push live data (e.g. audio waveforms) faster
+   * than the config channel. No commandId, no ack — fire and forget.
+   */
+  "module:stream": (payload: {
+    moduleId: string;
+    deviceId: string;
+    data: unknown;
+  }) => void;
 };
 
 export type ClientToServerEvents = {
@@ -48,6 +59,16 @@ export type ClientToServerEvents = {
     deviceId: string;
     moduleId: string;
     config: unknown;
+  }) => void;
+
+  /**
+   * Desktop-emitted version of `module:stream`. Server simply relays it to
+   * the device room — no validation, no ack.
+   */
+  "module:stream-to-device": (payload: {
+    moduleId: string;
+    deviceId: string;
+    data: unknown;
   }) => void;
 };
 
