@@ -3,34 +3,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
-import type { ModuleRotation } from "@cubism/protocol";
+import { modules } from "@cubism/modules";
 
 type DeviceStatus = "online" | "offline" | "unknown";
 
-const ROTATION_OPTIONS: { value: ModuleRotation; label: string }[] = [
-  { value: 0, label: "Normal" },
-  { value: 90, label: "Right" },
-  { value: 180, label: "Upside down" },
-  { value: 270, label: "Left" },
-];
-
-const DEFAULT_CIRCLE_COLOR = "#22d3ee";
-const DEFAULT_TEXT_COLOR = "#67e8f9";
-const DEFAULT_DATE_COLOR = "#a5f3fc";
+type ConfigByModule = Record<string, unknown>;
 
 export default function DesktopHomePage() {
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>("unknown");
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
-  const [format, setFormat] = useState<"12h" | "24h">("12h");
-  const [showSeconds, setShowSeconds] = useState(true);
-  const [rotation, setRotation] = useState<ModuleRotation>(0);
-  const [flipHorizontal, setFlipHorizontal] = useState(false);
-  const [flipVertical, setFlipVertical] = useState(false);
-  const [circleColor, setCircleColor] = useState(DEFAULT_CIRCLE_COLOR);
-  const [textColor, setTextColor] = useState(DEFAULT_TEXT_COLOR);
-  const [dateColor, setDateColor] = useState(DEFAULT_DATE_COLOR);
+
+  const [selectedId, setSelectedId] = useState<string>(
+    modules[0].manifest.id,
+  );
+  const [configByModule, setConfigByModule] = useState<ConfigByModule>(() =>
+    Object.fromEntries(
+      modules.map((m) => [m.manifest.id, m.manifest.defaultConfig]),
+    ),
+  );
 
   const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
   const deviceId = process.env.NEXT_PUBLIC_DEMO_DEVICE_ID ?? "pi-holo-001";
@@ -69,21 +61,17 @@ export default function DesktopHomePage() {
     };
   }, [socket, userId, deviceId]);
 
-  function sendClockModule() {
+  const selected =
+    modules.find((m) => m.manifest.id === selectedId) ?? modules[0];
+  const SelectedControls = selected.Controls;
+  const currentConfig = configByModule[selected.manifest.id];
+
+  function sendToDevice() {
     socket.emit("module:send-to-device", {
       commandId: crypto.randomUUID(),
       deviceId,
-      moduleId: "clock",
-      config: {
-        format,
-        showSeconds,
-        rotation,
-        flipHorizontal,
-        flipVertical,
-        circleColor,
-        textColor,
-        dateColor,
-      },
+      moduleId: selected.manifest.id,
+      config: currentConfig,
     });
   }
 
@@ -142,192 +130,82 @@ export default function DesktopHomePage() {
           </div>
         </motion.section>
 
+        {modules.length > 1 && (
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6"
+          >
+            <h2 className="text-xl font-semibold">Modules</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Select a module to configure.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {modules.map((m) => {
+                const active = m.manifest.id === selected.manifest.id;
+                return (
+                  <motion.button
+                    key={m.manifest.id}
+                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: 1.04 }}
+                    onClick={() => setSelectedId(m.manifest.id)}
+                    aria-pressed={active}
+                    className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                      active
+                        ? "bg-cyan-400 text-zinc-950"
+                        : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                    }`}
+                  >
+                    {m.manifest.name}
+                  </motion.button>
+                );
+              })}
+            </div>
+          </motion.section>
+        )}
+
         <motion.section
+          key={selected.manifest.id}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
           className="rounded-2xl border border-cyan-400/20 bg-zinc-900/80 p-6 shadow-[0_0_40px_rgba(34,211,238,0.08)]"
         >
-          <h2 className="text-xl font-semibold">Clock Module</h2>
-
-          <div className="mt-4 flex flex-col gap-4">
-            <label className="flex items-center gap-3">
-              <span className="w-32 text-zinc-400">Format</span>
-              <select
-                className="rounded-lg bg-zinc-800 px-3 py-2 text-white"
-                value={format}
-                onChange={(event) =>
-                  setFormat(event.target.value as "12h" | "24h")
-                }
-              >
-                <option value="12h">12 hour</option>
-                <option value="24h">24 hour</option>
-              </select>
-            </label>
-
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={showSeconds}
-                onChange={(event) => setShowSeconds(event.target.checked)}
-              />
-              <span>Show seconds</span>
-            </label>
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3">
-                <span className="w-32 text-zinc-400">Colors</span>
-                <p className="text-xs text-zinc-500">
-                  Customize the circle, time, and date colors.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-4">
-                <label className="flex items-center gap-2 text-sm text-zinc-300">
-                  <input
-                    type="color"
-                    value={circleColor}
-                    onChange={(event) => setCircleColor(event.target.value)}
-                    aria-label="Clock circle color"
-                    className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
-                  />
-                  <span>Circle</span>
-                  <span className="font-mono text-xs text-zinc-500">
-                    {circleColor}
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2 text-sm text-zinc-300">
-                  <input
-                    type="color"
-                    value={textColor}
-                    onChange={(event) => setTextColor(event.target.value)}
-                    aria-label="Clock time color"
-                    className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
-                  />
-                  <span>Time</span>
-                  <span className="font-mono text-xs text-zinc-500">
-                    {textColor}
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2 text-sm text-zinc-300">
-                  <input
-                    type="color"
-                    value={dateColor}
-                    onChange={(event) => setDateColor(event.target.value)}
-                    aria-label="Clock date color"
-                    className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
-                  />
-                  <span>Date</span>
-                  <span className="font-mono text-xs text-zinc-500">
-                    {dateColor}
-                  </span>
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCircleColor(DEFAULT_CIRCLE_COLOR);
-                    setTextColor(DEFAULT_TEXT_COLOR);
-                    setDateColor(DEFAULT_DATE_COLOR);
-                  }}
-                  className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3">
-                <span className="w-32 text-zinc-400">Orientation</span>
-                <p className="text-xs text-zinc-500">
-                  Rotate to compensate for beam-splitter optics.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {ROTATION_OPTIONS.map((option) => {
-                  const active = rotation === option.value;
-                  return (
-                    <motion.button
-                      key={option.value}
-                      whileTap={{ scale: 0.95 }}
-                      whileHover={{ scale: 1.04 }}
-                      onClick={() => setRotation(option.value)}
-                      aria-pressed={active}
-                      className={`flex min-w-22 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-                        active
-                          ? "bg-cyan-400 text-zinc-950"
-                          : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                      }`}
-                    >
-                      <span
-                        aria-hidden
-                        className="inline-block text-base leading-none"
-                        style={{ transform: `rotate(${option.value}deg)` }}
-                      >
-                        ↑
-                      </span>
-                      <span>{option.label}</span>
-                    </motion.button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3">
-                <span className="w-32 text-zinc-400">Mirror</span>
-                <p className="text-xs text-zinc-500">
-                  Some splitters reflect a single axis instead of rotating.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <motion.button
-                  whileTap={{ scale: 0.95 }}
-                  whileHover={{ scale: 1.04 }}
-                  onClick={() => setFlipHorizontal((value) => !value)}
-                  aria-pressed={flipHorizontal}
-                  className={`flex min-w-32 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-                    flipHorizontal
-                      ? "bg-cyan-400 text-zinc-950"
-                      : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                  }`}
-                >
-                  <span aria-hidden className="text-base leading-none">
-                    ↔
-                  </span>
-                  <span>Mirror horizontal</span>
-                </motion.button>
-
-                <motion.button
-                  whileTap={{ scale: 0.95 }}
-                  whileHover={{ scale: 1.04 }}
-                  onClick={() => setFlipVertical((value) => !value)}
-                  aria-pressed={flipVertical}
-                  className={`flex min-w-32 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-                    flipVertical
-                      ? "bg-cyan-400 text-zinc-950"
-                      : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                  }`}
-                >
-                  <span aria-hidden className="text-base leading-none">
-                    ↕
-                  </span>
-                  <span>Mirror vertical</span>
-                </motion.button>
-              </div>
-            </div>
-
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              whileHover={{ scale: 1.02 }}
-              onClick={sendClockModule}
-              className="w-fit rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-zinc-950 hover:bg-cyan-300"
-            >
-              Display Clock on Hologram
-            </motion.button>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xl font-semibold">
+              {selected.manifest.name} Module
+            </h2>
+            <span className="text-xs text-zinc-500">
+              v{selected.manifest.version}
+            </span>
           </div>
+          {selected.manifest.description && (
+            <p className="mt-1 text-sm text-zinc-500">
+              {selected.manifest.description}
+            </p>
+          )}
+
+          <div className="mt-4">
+            <SelectedControls
+              config={currentConfig}
+              onChange={(next) =>
+                setConfigByModule((prev) => ({
+                  ...prev,
+                  [selected.manifest.id]: next,
+                }))
+              }
+            />
+          </div>
+
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            whileHover={{ scale: 1.02 }}
+            onClick={sendToDevice}
+            className="mt-6 w-fit rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-zinc-950 hover:bg-cyan-300"
+          >
+            Send {selected.manifest.name} to Hologram
+          </motion.button>
         </motion.section>
       </motion.div>
     </main>

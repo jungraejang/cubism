@@ -3,24 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
-import { ClockModule } from "@/modules/ClockModule";
-import type { ClockModuleConfig } from "@cubism/protocol";
+import { modules, type AnyCubismModule } from "@cubism/modules";
 
 type ActiveModule = {
-  moduleId: "clock";
-  config: ClockModuleConfig;
-} | null;
+  module: AnyCubismModule;
+  config: unknown;
+};
 
 export default function RendererHomePage() {
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
-  const [activeModule, setActiveModule] = useState<ActiveModule>({
-    moduleId: "clock",
-    config: {
-      format: "12h",
-      showSeconds: true,
-    },
-  });
+  const [active, setActive] = useState<ActiveModule | null>(null);
 
   const deviceId = process.env.NEXT_PUBLIC_DEVICE_ID ?? "pi-holo-001";
 
@@ -41,36 +34,50 @@ export default function RendererHomePage() {
     });
 
     socket.on("module:display", (payload) => {
-      if (payload.moduleId === "clock") {
-        setActiveModule({
-          moduleId: "clock",
-          config: payload.config,
-        });
-
-        socket.emit("device:heartbeat", {
-          deviceId,
-          currentModuleId: payload.moduleId,
-          timestamp: new Date().toISOString(),
-        });
+      const mod = modules.find((m) => m.manifest.id === payload.moduleId);
+      if (!mod) {
+        console.warn(
+          `[renderer] received module:display for unknown module "${payload.moduleId}"`,
+        );
+        return;
       }
-    });
 
-    const heartbeatInterval = window.setInterval(() => {
+      const parsed = mod.configSchema.safeParse(payload.config);
+      if (!parsed.success) {
+        console.warn(
+          `[renderer] invalid config for module "${payload.moduleId}":`,
+          parsed.error,
+        );
+        return;
+      }
+
+      setActive({ module: mod, config: parsed.data });
+
       socket.emit("device:heartbeat", {
         deviceId,
-        currentModuleId: activeModule?.moduleId,
+        currentModuleId: payload.moduleId,
         timestamp: new Date().toISOString(),
       });
-    }, 10_000);
+    });
 
     return () => {
-      window.clearInterval(heartbeatInterval);
       socket.off("connect");
       socket.off("disconnect");
       socket.off("module:display");
       socket.disconnect();
     };
-  }, [socket, deviceId, activeModule?.moduleId]);
+  }, [socket, deviceId]);
+
+  useEffect(() => {
+    const heartbeatInterval = window.setInterval(() => {
+      socket.emit("device:heartbeat", {
+        deviceId,
+        currentModuleId: active?.module.manifest.id,
+        timestamp: new Date().toISOString(),
+      });
+    }, 10_000);
+    return () => window.clearInterval(heartbeatInterval);
+  }, [socket, deviceId, active]);
 
   if (!connected) {
     return (
@@ -96,10 +103,12 @@ export default function RendererHomePage() {
     );
   }
 
+  const ActiveRenderer = active?.module.Renderer;
+
   return (
     <AnimatePresence mode="wait">
-      {activeModule?.moduleId === "clock" ? (
-        <ClockModule key="clock" config={activeModule.config} />
+      {ActiveRenderer && active ? (
+        <ActiveRenderer key={active.module.manifest.id} config={active.config} />
       ) : (
         <motion.main
           key="empty"

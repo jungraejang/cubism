@@ -97,7 +97,7 @@ flowchart LR
     DesktopProc -- "device:status" --> DesktopUI
 ```
 
-Shared `@cubism/protocol` types make every Socket.IO event fully typed across desktop and renderer. New hologram modules are added by registering a manifest in `@cubism/modules` and a React component in `apps/renderer/src/modules/`.
+Shared `@cubism/protocol` types make every Socket.IO event fully typed across desktop and renderer (modules ship opaque `unknown` configs over the wire and are validated against each module's Zod schema on receive). New hologram modules are added by creating one folder under `packages/modules/src/<id>/` containing the manifest, Zod schema, `Controls` component, and `Renderer` component, then registering it in `packages/modules/src/index.ts`. Both apps consume the registry automatically — no app-side edits required.
 
 Supabase is wired up but auth stays mocked for the MVP via `NEXT_PUBLIC_DEMO_USER_ID`.
 

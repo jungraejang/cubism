@@ -2,15 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import type { ClockModuleConfig } from "@cubism/protocol";
+import { withAlpha } from "../_lib/withAlpha";
+import {
+  DEFAULT_CIRCLE_COLOR,
+  DEFAULT_DATE_COLOR,
+  DEFAULT_TEXT_COLOR,
+  type ClockModuleConfig,
+} from "./config";
 
 type Props = {
   config: ClockModuleConfig;
 };
-
-const DEFAULT_CIRCLE_COLOR = "#22d3ee";
-const DEFAULT_TEXT_COLOR = "#67e8f9";
-const DEFAULT_DATE_COLOR = "#a5f3fc";
 
 /**
  * Pixel-shift parameters for burn-in mitigation. Every PIXEL_SHIFT_INTERVAL_MS
@@ -25,19 +27,6 @@ const DEFAULT_DATE_COLOR = "#a5f3fc";
 const PIXEL_SHIFT_MAX = 3;
 const PIXEL_SHIFT_INTERVAL_MS = 60_000;
 const PIXEL_SHIFT_DURATION_S = 2;
-
-/**
- * Converts a #RRGGBB hex string into an rgba() string at the given alpha. Used
- * so the user's chosen colors flow through to every layer (border, halo,
- * inner rings, text glow) at appropriate opacities.
- */
-function withAlpha(hex: string, alpha: number): string {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.substring(0, 2), 16);
-  const g = parseInt(h.substring(2, 4), 16);
-  const b = parseInt(h.substring(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 /**
  * A single character cell. Digits animate with a slot-machine fall-from-above
@@ -71,7 +60,7 @@ function AnimatedChar({ char, isDigit }: { char: string; isDigit: boolean }) {
   );
 }
 
-export function ClockModule({ config }: Props) {
+export function ClockRenderer({ config }: Props) {
   const [now, setNow] = useState(() => new Date());
   const [pixelShift, setPixelShift] = useState({ x: 0, y: 0 });
 

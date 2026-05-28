@@ -8,7 +8,9 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "declaration": true,
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "preserve",
+    "lib": ["DOM", "ES2022"]
   },
   "include": ["src"]
 }

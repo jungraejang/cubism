@@ -1,37 +1,14 @@
 export type ClientRole = "desktop" | "renderer";
 
-export type ModuleId = "clock";
-
 export type DeviceStatus = "online" | "offline";
 
 /**
- * Display rotation in degrees, applied as a CSS transform on the module
- * container. Used to compensate for beam-splitter optics that flip or rotate
- * the rendered image.
+ * Wire-level Socket.IO event signatures. The protocol package intentionally
+ * knows nothing about specific modules: module IDs are opaque strings and
+ * module configs are opaque `unknown` payloads. The receiving side looks up
+ * the module in `@cubism/modules` and validates the config against that
+ * module's Zod schema before trusting the data.
  */
-export type ModuleRotation = 0 | 90 | 180 | 270;
-
-export type ClockModuleConfig = {
-  format: "12h" | "24h";
-  showSeconds: boolean;
-  timezone?: string;
-  rotation?: ModuleRotation;
-  /** Mirror the rendered output horizontally (scaleX(-1)). */
-  flipHorizontal?: boolean;
-  /** Mirror the rendered output vertically (scaleY(-1)). */
-  flipVertical?: boolean;
-  /** Hex color (e.g. "#22d3ee") for the clock circle, rings, and halo glow. */
-  circleColor?: string;
-  /** Hex color (e.g. "#67e8f9") for the time digits. */
-  textColor?: string;
-  /** Hex color (e.g. "#a5f3fc") for the date label below the time. */
-  dateColor?: string;
-};
-
-export type ModuleConfigMap = {
-  clock: ClockModuleConfig;
-};
-
 export type ServerToClientEvents = {
   "device:status": (payload: {
     deviceId: string;
@@ -39,10 +16,10 @@ export type ServerToClientEvents = {
     lastSeenAt: string;
   }) => void;
 
-  "module:display": <TModuleId extends ModuleId>(payload: {
+  "module:display": (payload: {
     commandId: string;
-    moduleId: TModuleId;
-    config: ModuleConfigMap[TModuleId];
+    moduleId: string;
+    config: unknown;
   }) => void;
 
   "command:ack": (payload: {
@@ -62,15 +39,15 @@ export type ClientToServerEvents = {
 
   "device:heartbeat": (payload: {
     deviceId: string;
-    currentModuleId?: ModuleId;
+    currentModuleId?: string;
     timestamp: string;
   }) => void;
 
-  "module:send-to-device": <TModuleId extends ModuleId>(payload: {
+  "module:send-to-device": (payload: {
     commandId: string;
     deviceId: string;
-    moduleId: TModuleId;
-    config: ModuleConfigMap[TModuleId];
+    moduleId: string;
+    config: unknown;
   }) => void;
 };
 
