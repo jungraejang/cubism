@@ -43,9 +43,16 @@
 export type DrawStackedWavesOptions = {
   width: number;
   height: number;
-  /** Color of lines closest to the vertical center (peak ridge). */
+  /** Color of the ridge peak at the TOP of the canvas. */
   lineColor: string;
-  /** Color of lines at the top/bottom edges. */
+  /**
+   * Color of the ridge peak at the BOTTOM of the canvas. Each row's
+   * "line color" is a vertical lerp from `lineColor` (top) to `lineColor2`
+   * (bottom), so the peak gains a gradient instead of being a single hue.
+   * Pass the same color as `lineColor` to get a flat-color peak.
+   */
+  lineColor2: string;
+  /** Color of lines at the top/bottom EDGES (symmetric, as before). */
   glowColor: string;
   /** Color of the optional horizontal center guide line. */
   gridColor: string;
@@ -70,6 +77,7 @@ export function drawStackedWaves(
     width,
     height,
     lineColor,
+    lineColor2,
     glowColor,
     gridColor,
     lineWidth,
@@ -108,7 +116,8 @@ export function drawStackedWaves(
    * is plenty to capture every meaningful bump.
    */
   const xSteps = performanceMode ? 80 : 128;
-  const lineRgb = hexToRgb(lineColor);
+  const lineTopRgb = hexToRgb(lineColor);
+  const lineBottomRgb = hexToRgb(lineColor2);
   const glowRgb = hexToRgb(glowColor);
 
   /*
@@ -159,7 +168,15 @@ export function drawStackedWaves(
     const centerDist = Math.abs(t - 0.5) * 2;
     const envelope = Math.pow(1 - centerDist, 1.6);
 
-    ctx.strokeStyle = lerpRgb(glowRgb, lineRgb, envelope);
+    /*
+     * Per-row peak color: lerp(lineTop, lineBottom, t). So the top row's
+     * peak uses `lineColor`, the bottom row's peak uses `lineColor2`, and
+     * everything between is a smooth blend. Then the envelope-based lerp
+     * from glow toward that per-row peak handles the soft fade into the
+     * edges, preserving the original glow behavior exactly.
+     */
+    const perRowPeak = lerpRgbObj(lineTopRgb, lineBottomRgb, t);
+    ctx.strokeStyle = lerpRgb(glowRgb, perRowPeak, envelope);
     ctx.globalAlpha = performanceMode ? 1 : 0.35 + 0.65 * envelope;
 
     const lineAmp = envelope * maxDisplacement;
@@ -228,4 +245,13 @@ function lerpRgb(a: Rgb, b: Rgb, t: number): string {
   const g = Math.round(a.g + (b.g - a.g) * t);
   const bl = Math.round(a.b + (b.b - a.b) * t);
   return `rgb(${r},${g},${bl})`;
+}
+
+/** RGB lerp returning the Rgb object (no string allocation). */
+function lerpRgbObj(a: Rgb, b: Rgb, t: number): Rgb {
+  return {
+    r: Math.round(a.r + (b.r - a.r) * t),
+    g: Math.round(a.g + (b.g - a.g) * t),
+    b: Math.round(a.b + (b.b - a.b) * t),
+  };
 }

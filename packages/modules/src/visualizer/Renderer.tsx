@@ -9,19 +9,11 @@ import {
 } from "../_lib/usePixelShift";
 import type { RendererProps } from "../types";
 import {
-  DEFAULT_BAR_COUNT,
-  DEFAULT_GLOW_COLOR,
-  DEFAULT_GRID_COLOR,
-  DEFAULT_LINE_COLOR,
-  DEFAULT_LINE_WIDTH,
   DEFAULT_PERFORMANCE_MODE,
-  DEFAULT_RING_COUNT,
-  DEFAULT_RING_SPEED,
-  DEFAULT_STACK_COUNT,
-  DEFAULT_SENSITIVITY,
   DEFAULT_STYLE,
   FREQUENCY_BIN_COUNT,
   WAVEFORM_SAMPLE_COUNT,
+  resolveStyleSettings,
   type VisualizerModuleConfig,
   type VisualizerStreamFrame,
 } from "./config";
@@ -53,16 +45,19 @@ export function VisualizerRenderer({
   const lastFrameAtRef = useRef<number>(0);
 
   const style = config.style ?? DEFAULT_STYLE;
-  const lineColor = config.lineColor ?? DEFAULT_LINE_COLOR;
-  const glowColor = config.glowColor ?? DEFAULT_GLOW_COLOR;
-  const gridColor = config.gridColor ?? DEFAULT_GRID_COLOR;
-  const lineWidth = config.lineWidth ?? DEFAULT_LINE_WIDTH;
-  const sensitivity = config.sensitivity ?? DEFAULT_SENSITIVITY;
-  const showGrid = config.showGrid ?? true;
-  const barCount = config.barCount ?? DEFAULT_BAR_COUNT;
-  const ringCount = config.ringCount ?? DEFAULT_RING_COUNT;
-  const ringSpeed = config.ringSpeed ?? DEFAULT_RING_SPEED;
-  const stackCount = config.stackCount ?? DEFAULT_STACK_COUNT;
+  const {
+    lineColor,
+    lineColor2,
+    glowColor,
+    gridColor,
+    lineWidth,
+    sensitivity,
+    showGrid,
+    barCount,
+    ringCount,
+    ringSpeed,
+    stackCount,
+  } = resolveStyleSettings(config, style);
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const { rotate, scaleX, scaleY } = orientationTransform(config);
 
@@ -188,6 +183,7 @@ export function VisualizerRenderer({
           width,
           height,
           lineColor,
+          lineColor2,
           glowColor,
           gridColor,
           lineWidth: lineWidth * ratio,
@@ -216,6 +212,7 @@ export function VisualizerRenderer({
   }, [
     style,
     lineColor,
+    lineColor2,
     glowColor,
     gridColor,
     lineWidth,

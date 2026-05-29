@@ -18,6 +18,34 @@ export const VISUALIZER_STYLE_OPTIONS = [
 export type VisualizerStyle =
   (typeof VISUALIZER_STYLE_OPTIONS)[number]["value"];
 
+/**
+ * Per-style override schema. Every field is optional — anything not set
+ * here falls back to the legacy flat fields on `VisualizerConfigSchema`
+ * (for migration) and then to `STYLE_DEFAULTS[style]`. See
+ * `resolveStyleSettings()`.
+ */
+export const PerStyleSettingsSchema = z.object({
+  lineColor: z.string().optional(),
+  /**
+   * Secondary "line" color. Currently used only by `stacked-waves`, where the
+   * ridge peak fades from `lineColor` at the top to `lineColor2` at the
+   * bottom, giving the peak a vertical color gradient instead of a single
+   * flat hue. Other styles ignore this field.
+   */
+  lineColor2: z.string().optional(),
+  glowColor: z.string().optional(),
+  gridColor: z.string().optional(),
+  lineWidth: z.number().min(1).max(12).optional(),
+  sensitivity: z.number().min(0.5).max(5).optional(),
+  showGrid: z.boolean().optional(),
+  barCount: z.number().int().min(24).max(192).optional(),
+  ringCount: z.number().int().min(2).max(24).optional(),
+  ringSpeed: z.number().min(1).max(20).optional(),
+  stackCount: z.number().int().min(6).max(48).optional(),
+});
+
+export type PerStyleSettings = z.infer<typeof PerStyleSettingsSchema>;
+
 export const VisualizerConfigSchema = z.object({
   /** Which drawing routine to use on the renderer. */
   style: z
@@ -28,38 +56,43 @@ export const VisualizerConfigSchema = z.object({
       "stacked-waves",
     ])
     .optional(),
+
   /**
-   * Primary accent color. Per style:
-   *  - oscilloscope: the waveform line itself.
-   *  - radial-spectrum: the bar color at the inner base of each spoke.
+   * Per-style settings. Each visual stores its own colors, widths, and
+   * counts here so customizing one style no longer leaks into the others.
+   * Resolved via `resolveStyleSettings(config, style)`.
+   */
+  styleSettings: z
+    .object({
+      oscilloscope: PerStyleSettingsSchema.optional(),
+      "radial-spectrum": PerStyleSettingsSchema.optional(),
+      "concentric-rings": PerStyleSettingsSchema.optional(),
+      "stacked-waves": PerStyleSettingsSchema.optional(),
+    })
+    .optional(),
+
+  /*
+   * --- Legacy flat fields ----------------------------------------------------
+   * These used to be the live values. They are now treated as a
+   * "global override" applied to ANY style that hasn't customized that
+   * field yet, so existing user configs keep their colors after the
+   * per-style refactor. New writes always go into `styleSettings[style]`.
    */
   lineColor: z.string().optional(),
-  /**
-   * Secondary accent color. Per style:
-   *  - oscilloscope: the soft halo under the line.
-   *  - radial-spectrum: the bar color at the outer tip (creates a gradient
-   *    from `lineColor` at the base to `glowColor` at the tip).
-   */
   glowColor: z.string().optional(),
-  /** Grid lines (oscilloscope) / inner radius outline (radial). */
   gridColor: z.string().optional(),
-  /** Stroke thickness in CSS pixels. */
   lineWidth: z.number().min(1).max(12).optional(),
-  /** Amplification multiplier (1 = neutral). */
   sensitivity: z.number().min(0.5).max(5).optional(),
-  /** Whether to draw any helper grid / outlines. */
   showGrid: z.boolean().optional(),
-  /** Number of spokes for the radial-spectrum style. */
   barCount: z.number().int().min(24).max(192).optional(),
-  /** Maximum number of trailing rings kept alive at once (concentric-rings). */
   ringCount: z.number().int().min(2).max(24).optional(),
-  /**
-   * How many CSS pixels each ring expands outward per drawn frame
-   * (concentric-rings). Higher = ripples move outward faster.
-   */
   ringSpeed: z.number().min(1).max(20).optional(),
-  /** Number of horizontal lines for the stacked-waves style. */
   stackCount: z.number().int().min(6).max(48).optional(),
+
+  /*
+   * --- Truly global settings -------------------------------------------------
+   */
+
   /**
    * Disable the soft glow pass and the per-bar gradient, and throttle the
    * draw loop to ~30fps. Massive win on Pi-class hardware where the canvas
@@ -85,6 +118,132 @@ export const DEFAULT_RING_COUNT = 8;
 export const DEFAULT_RING_SPEED = 6;
 export const DEFAULT_STACK_COUNT = 24;
 export const DEFAULT_PERFORMANCE_MODE = true;
+
+/**
+ * Resolved style settings — every field is required after merging defaults.
+ * Drawing code consumes this shape.
+ */
+export type ResolvedStyleSettings = {
+  lineColor: string;
+  lineColor2: string;
+  glowColor: string;
+  gridColor: string;
+  lineWidth: number;
+  sensitivity: number;
+  showGrid: boolean;
+  barCount: number;
+  ringCount: number;
+  ringSpeed: number;
+  stackCount: number;
+};
+
+/**
+ * Per-style factory defaults. Each visual ships with its own color identity
+ * so picking a style for the first time looks intentional rather than reusing
+ * the previous style's palette.
+ */
+export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
+  oscilloscope: {
+    lineColor: "#22d3ee",
+    lineColor2: "#22d3ee",
+    glowColor: "#67e8f9",
+    gridColor: "#1e3a47",
+    lineWidth: 3,
+    sensitivity: 1.5,
+    showGrid: true,
+    barCount: DEFAULT_BAR_COUNT,
+    ringCount: DEFAULT_RING_COUNT,
+    ringSpeed: DEFAULT_RING_SPEED,
+    stackCount: DEFAULT_STACK_COUNT,
+  },
+  "radial-spectrum": {
+    lineColor: "#22d3ee",
+    lineColor2: "#22d3ee",
+    glowColor: "#f472b6",
+    gridColor: "#1e3a47",
+    lineWidth: 3,
+    sensitivity: 1.5,
+    showGrid: false,
+    barCount: DEFAULT_BAR_COUNT,
+    ringCount: DEFAULT_RING_COUNT,
+    ringSpeed: DEFAULT_RING_SPEED,
+    stackCount: DEFAULT_STACK_COUNT,
+  },
+  "concentric-rings": {
+    lineColor: "#fb923c",
+    lineColor2: "#fb923c",
+    glowColor: "#3b82f6",
+    gridColor: "#1e3a47",
+    lineWidth: 2,
+    sensitivity: 1.5,
+    showGrid: false,
+    barCount: DEFAULT_BAR_COUNT,
+    ringCount: DEFAULT_RING_COUNT,
+    ringSpeed: DEFAULT_RING_SPEED,
+    stackCount: DEFAULT_STACK_COUNT,
+  },
+  "stacked-waves": {
+    /*
+     * White-at-top → cyan-at-bottom ridge by default, so the new
+     * second-color field is immediately visible. Glow stays a dark grey
+     * for the soft edge falloff.
+     */
+    lineColor: "#ffffff",
+    lineColor2: "#22d3ee",
+    glowColor: "#1c1c1c",
+    gridColor: "#1e3a47",
+    lineWidth: 2,
+    sensitivity: 1.5,
+    showGrid: false,
+    barCount: DEFAULT_BAR_COUNT,
+    ringCount: DEFAULT_RING_COUNT,
+    ringSpeed: DEFAULT_RING_SPEED,
+    stackCount: DEFAULT_STACK_COUNT,
+  },
+};
+
+/**
+ * Resolve the effective settings for one visualizer style.
+ *
+ * Precedence (highest first):
+ *  1. `config.styleSettings[style].X` — explicit per-style override.
+ *  2. `config.X` — legacy flat field, treated as a "global override" so
+ *     pre-refactor configs keep their look. Once a user customizes a
+ *     field via the new UI it's stored in (1) and wins.
+ *  3. `STYLE_DEFAULTS[style].X` — built-in default for this style.
+ */
+export function resolveStyleSettings(
+  config: VisualizerModuleConfig,
+  style: VisualizerStyle,
+): ResolvedStyleSettings {
+  const d = STYLE_DEFAULTS[style];
+  const o = config.styleSettings?.[style] ?? {};
+
+  // Per-style override wins, then legacy flat field, then style default.
+  const pick = <T>(
+    perStyle: T | undefined,
+    legacy: T | undefined,
+    fallback: T,
+  ): T => (perStyle !== undefined ? perStyle : legacy ?? fallback);
+
+  const result: ResolvedStyleSettings = {
+    lineColor: pick(o.lineColor, config.lineColor, d.lineColor),
+    // lineColor2 has no legacy counterpart on the flat config — it's a
+    // new field, so we only consider the per-style override + default.
+    lineColor2: o.lineColor2 !== undefined ? o.lineColor2 : d.lineColor2,
+    glowColor: pick(o.glowColor, config.glowColor, d.glowColor),
+    gridColor: pick(o.gridColor, config.gridColor, d.gridColor),
+    lineWidth: pick(o.lineWidth, config.lineWidth, d.lineWidth),
+    sensitivity: pick(o.sensitivity, config.sensitivity, d.sensitivity),
+    showGrid: pick(o.showGrid, config.showGrid, d.showGrid),
+    barCount: pick(o.barCount, config.barCount, d.barCount),
+    ringCount: pick(o.ringCount, config.ringCount, d.ringCount),
+    ringSpeed: pick(o.ringSpeed, config.ringSpeed, d.ringSpeed),
+    stackCount: pick(o.stackCount, config.stackCount, d.stackCount),
+  };
+
+  return result;
+}
 
 /**
  * Wire shape for one visualizer frame.

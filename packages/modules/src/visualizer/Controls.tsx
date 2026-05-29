@@ -6,19 +6,12 @@ import { ROTATION_OPTIONS } from "../_lib/orientation";
 import type { ControlsProps } from "../types";
 import {
   AUDIO_SOURCE_OPTIONS,
-  DEFAULT_BAR_COUNT,
-  DEFAULT_GLOW_COLOR,
-  DEFAULT_GRID_COLOR,
-  DEFAULT_LINE_COLOR,
-  DEFAULT_LINE_WIDTH,
   DEFAULT_PERFORMANCE_MODE,
-  DEFAULT_RING_COUNT,
-  DEFAULT_RING_SPEED,
-  DEFAULT_STACK_COUNT,
-  DEFAULT_SENSITIVITY,
   DEFAULT_STYLE,
   VISUALIZER_STYLE_OPTIONS,
+  resolveStyleSettings,
   type AudioSource,
+  type PerStyleSettings,
   type VisualizerModuleConfig,
   type VisualizerStreamFrame,
 } from "./config";
@@ -67,21 +60,43 @@ export function VisualizerControls({
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastFrameRef = useRef<WaveformFrame | null>(getLastFrame());
 
+  const style = config.style ?? DEFAULT_STYLE;
+
+  /** Global config update — for fields shared across all styles. */
   function patch(next: Partial<VisualizerModuleConfig>) {
     onChange({ ...config, ...next });
   }
 
-  const style = config.style ?? DEFAULT_STYLE;
-  const lineColor = config.lineColor ?? DEFAULT_LINE_COLOR;
-  const glowColor = config.glowColor ?? DEFAULT_GLOW_COLOR;
-  const gridColor = config.gridColor ?? DEFAULT_GRID_COLOR;
-  const lineWidth = config.lineWidth ?? DEFAULT_LINE_WIDTH;
-  const sensitivity = config.sensitivity ?? DEFAULT_SENSITIVITY;
-  const showGrid = config.showGrid ?? true;
-  const barCount = config.barCount ?? DEFAULT_BAR_COUNT;
-  const ringCount = config.ringCount ?? DEFAULT_RING_COUNT;
-  const ringSpeed = config.ringSpeed ?? DEFAULT_RING_SPEED;
-  const stackCount = config.stackCount ?? DEFAULT_STACK_COUNT;
+  /**
+   * Per-style config update. Writes into `config.styleSettings[currentStyle]`
+   * so changes only affect the active visual. Other styles keep their own
+   * customizations (or fall back to factory defaults).
+   */
+  function patchStyle(next: Partial<PerStyleSettings>) {
+    const existing = config.styleSettings?.[style] ?? {};
+    onChange({
+      ...config,
+      styleSettings: {
+        ...(config.styleSettings ?? {}),
+        [style]: { ...existing, ...next },
+      },
+    });
+  }
+
+  const resolved = resolveStyleSettings(config, style);
+  const {
+    lineColor,
+    lineColor2,
+    glowColor,
+    gridColor,
+    lineWidth,
+    sensitivity,
+    showGrid,
+    barCount,
+    ringCount,
+    ringSpeed,
+    stackCount,
+  } = resolved;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const rotation = config.rotation ?? 0;
 
@@ -198,6 +213,7 @@ export function VisualizerControls({
               width,
               height,
               lineColor,
+              lineColor2,
               glowColor,
               gridColor,
               lineWidth: lineWidth * ratio,
@@ -227,6 +243,7 @@ export function VisualizerControls({
   }, [
     style,
     lineColor,
+    lineColor2,
     glowColor,
     gridColor,
     lineWidth,
@@ -324,7 +341,7 @@ export function VisualizerControls({
               : style === "concentric-rings"
                 ? "Line = newest ring · Glow = oldest ring"
                 : style === "stacked-waves"
-                  ? "Line = ridge peak · Glow = top/bottom edges"
+                  ? "Line (top) · Line 2 (bottom) · Glow = edges"
                   : "Line = waveform · Glow = halo"}
           </span>
         </div>
@@ -333,17 +350,35 @@ export function VisualizerControls({
             <input
               type="color"
               value={lineColor}
-              onChange={(event) => patch({ lineColor: event.target.value })}
+              onChange={(event) =>
+                patchStyle({ lineColor: event.target.value })
+              }
               aria-label="Line color"
               className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
             />
-            <span>Line</span>
+            <span>{style === "stacked-waves" ? "Line (top)" : "Line"}</span>
           </label>
+          {style === "stacked-waves" ? (
+            <label className="flex items-center gap-2 text-sm text-zinc-300">
+              <input
+                type="color"
+                value={lineColor2}
+                onChange={(event) =>
+                  patchStyle({ lineColor2: event.target.value })
+                }
+                aria-label="Line color 2"
+                className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
+              />
+              <span>Line (bottom)</span>
+            </label>
+          ) : null}
           <label className="flex items-center gap-2 text-sm text-zinc-300">
             <input
               type="color"
               value={glowColor}
-              onChange={(event) => patch({ glowColor: event.target.value })}
+              onChange={(event) =>
+                patchStyle({ glowColor: event.target.value })
+              }
               aria-label="Glow color"
               className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
             />
@@ -353,7 +388,9 @@ export function VisualizerControls({
             <input
               type="color"
               value={gridColor}
-              onChange={(event) => patch({ gridColor: event.target.value })}
+              onChange={(event) =>
+                patchStyle({ gridColor: event.target.value })
+              }
               aria-label="Grid color"
               className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
             />
@@ -383,7 +420,7 @@ export function VisualizerControls({
             step={1}
             value={lineWidth}
             onChange={(event) =>
-              patch({ lineWidth: Number(event.target.value) })
+              patchStyle({ lineWidth: Number(event.target.value) })
             }
             className="accent-cyan-400"
           />
@@ -402,7 +439,7 @@ export function VisualizerControls({
             step={0.1}
             value={sensitivity}
             onChange={(event) =>
-              patch({ sensitivity: Number(event.target.value) })
+              patchStyle({ sensitivity: Number(event.target.value) })
             }
             className="accent-cyan-400"
           />
@@ -420,7 +457,7 @@ export function VisualizerControls({
               step={4}
               value={barCount}
               onChange={(event) =>
-                patch({ barCount: Number(event.target.value) })
+                patchStyle({ barCount: Number(event.target.value) })
               }
               className="accent-cyan-400"
             />
@@ -440,7 +477,7 @@ export function VisualizerControls({
                 step={1}
                 value={ringCount}
                 onChange={(event) =>
-                  patch({ ringCount: Number(event.target.value) })
+                  patchStyle({ ringCount: Number(event.target.value) })
                 }
                 className="accent-cyan-400"
               />
@@ -457,7 +494,7 @@ export function VisualizerControls({
                 step={1}
                 value={ringSpeed}
                 onChange={(event) =>
-                  patch({ ringSpeed: Number(event.target.value) })
+                  patchStyle({ ringSpeed: Number(event.target.value) })
                 }
                 className="accent-cyan-400"
               />
@@ -477,7 +514,7 @@ export function VisualizerControls({
               step={1}
               value={stackCount}
               onChange={(event) =>
-                patch({ stackCount: Number(event.target.value) })
+                patchStyle({ stackCount: Number(event.target.value) })
               }
               className="accent-cyan-400"
             />
@@ -490,7 +527,7 @@ export function VisualizerControls({
           <input
             type="checkbox"
             checked={showGrid}
-            onChange={(event) => patch({ showGrid: event.target.checked })}
+            onChange={(event) => patchStyle({ showGrid: event.target.checked })}
           />
           <span>
             {style === "radial-spectrum" || style === "concentric-rings"
