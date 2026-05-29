@@ -29,6 +29,7 @@ export default function RendererHomePage() {
   const activeIdRef = useRef<string | null>(null);
 
   const deviceId = process.env.NEXT_PUBLIC_DEVICE_ID ?? "pi-holo-001";
+  const userId = process.env.NEXT_PUBLIC_USER_ID ?? "demo-user";
 
   useEffect(() => {
     activeIdRef.current = active?.module.manifest.id ?? null;
@@ -43,6 +44,7 @@ export default function RendererHomePage() {
       socket.emit("client:register", {
         role: "renderer",
         deviceId,
+        userId,
       });
     });
 
@@ -96,7 +98,7 @@ export default function RendererHomePage() {
       socket.off("module:stream");
       socket.disconnect();
     };
-  }, [socket, deviceId]);
+  }, [socket, deviceId, userId]);
 
   useEffect(() => {
     const heartbeatInterval = window.setInterval(() => {
@@ -108,6 +110,56 @@ export default function RendererHomePage() {
     }, 10_000);
     return () => window.clearInterval(heartbeatInterval);
   }, [socket, deviceId, active]);
+
+  /**
+   * Hardware controller input via the browser. The Pi has a 3-key macropad
+   * + volume knob plugged in; all of those generate ordinary keyboard
+   * events the moment the renderer window has focus, so we don't need a
+   * separate sidecar process. We just translate the keys into the same
+   * `controller:input` event the (now-optional) pi-controller would emit.
+   *
+   * The server fans this out to the desktop control panel's user room,
+   * which updates `selectedId` and pushes the new module back to us via
+   * `module:display`.
+   */
+  useEffect(() => {
+    function classify(event: KeyboardEvent): "next" | "prev" | null {
+      // Ignore modified shortcuts so Ctrl-L / Cmd-R etc. don't fight us.
+      if (event.ctrlKey || event.metaKey || event.altKey) return null;
+      switch (event.key) {
+        case "ArrowRight":
+        case "ArrowUp":
+        case "PageDown":
+        case "AudioVolumeUp":
+          return "next";
+        case "ArrowLeft":
+        case "ArrowDown":
+        case "PageUp":
+        case "AudioVolumeDown":
+          return "prev";
+        default:
+          return null;
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      // Most browsers fire key-repeat events when a key is held; we treat
+      // the macropad knob as discrete clicks so ignore the repeats. The
+      // detents fire fresh keydowns each time.
+      if (event.repeat) return;
+      const action = classify(event);
+      if (!action) return;
+      event.preventDefault();
+      socket.emit("controller:input", {
+        deviceId,
+        action,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [socket, deviceId]);
 
   if (!connected) {
     return (

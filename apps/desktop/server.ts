@@ -55,6 +55,12 @@ async function main() {
 
       if (payload.role === "renderer" && payload.deviceId) {
         socket.join(`device:${payload.deviceId}`);
+        // Also join the user room so the renderer can emit
+        // `controller:input` (e.g. from a Pi-side keyboard) and have the
+        // server fan it back out to the desktop control panel.
+        if (payload.userId) {
+          socket.join(`user:${payload.userId}`);
+        }
 
         io.emit("device:status", {
           deviceId: payload.deviceId,
