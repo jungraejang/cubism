@@ -57,6 +57,7 @@ export function VisualizerRenderer({
     ringCount,
     ringSpeed,
     stackCount,
+    frequencyLayout,
   } = resolveStyleSettings(config, style);
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const { rotate, scaleX, scaleY } = orientationTransform(config);
@@ -190,6 +191,7 @@ export function VisualizerRenderer({
           sensitivity,
           showGrid,
           lineCount: stackCount,
+          frequencyLayout,
           performanceMode,
         });
       } else {
@@ -222,6 +224,7 @@ export function VisualizerRenderer({
     ringCount,
     ringSpeed,
     stackCount,
+    frequencyLayout,
     performanceMode,
   ]);
 

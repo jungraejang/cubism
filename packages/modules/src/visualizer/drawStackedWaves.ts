@@ -64,6 +64,14 @@ export type DrawStackedWavesOptions = {
   showGrid: boolean;
   /** Number of stacked lines. */
   lineCount: number;
+  /**
+   * X-axis mapping for the FFT bins. See `frequencyLayout` in the config
+   * schema for what each value means.
+   *  - "mirrored":       bass at the horizontal center, treble at both edges.
+   *  - "linear":         bass at the left, treble at the right.
+   *  - "linear-reverse": treble at the left, bass at the right.
+   */
+  frequencyLayout: "mirrored" | "linear" | "linear-reverse";
   /** Skip extra prettiness for Pi-class hardware. */
   performanceMode?: boolean;
 };
@@ -84,6 +92,7 @@ export function drawStackedWaves(
     sensitivity,
     showGrid,
     lineCount,
+    frequencyLayout,
     performanceMode = false,
   } = opts;
 
@@ -133,8 +142,22 @@ export function drawStackedWaves(
   for (let s = 0; s <= xSteps; s++) {
     const xT = s / xSteps; // 0..1
     xs[s] = xT * width;
-    const mirrored = Math.abs(xT - 0.5) * 2; // 0 at center, 1 at edges
-    const binIdx = Math.floor(mirrored * (freqs.length - 1));
+    /*
+     * `t` is the unit position along the spectrum after layout has been
+     * applied: 0 = first bin (bass), 1 = last bin (treble). The window
+     * function below always tapers based on canvas X, so we don't need
+     * to fight it here — the spectrum just gets repositioned.
+     */
+    let t: number;
+    if (frequencyLayout === "linear") {
+      t = xT;
+    } else if (frequencyLayout === "linear-reverse") {
+      t = 1 - xT;
+    } else {
+      // mirrored — bass center, treble at edges.
+      t = Math.abs(xT - 0.5) * 2;
+    }
+    const binIdx = Math.floor(t * (freqs.length - 1));
     rawV[s] = freqs[binIdx] / 255;
   }
 

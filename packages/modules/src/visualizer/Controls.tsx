@@ -8,6 +8,7 @@ import {
   AUDIO_SOURCE_OPTIONS,
   DEFAULT_PERFORMANCE_MODE,
   DEFAULT_STYLE,
+  FREQUENCY_LAYOUT_OPTIONS,
   VISUALIZER_STYLE_OPTIONS,
   resolveStyleSettings,
   type AudioSource,
@@ -96,6 +97,7 @@ export function VisualizerControls({
     ringCount,
     ringSpeed,
     stackCount,
+    frequencyLayout,
   } = resolved;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const rotation = config.rotation ?? 0;
@@ -220,6 +222,7 @@ export function VisualizerControls({
               sensitivity,
               showGrid: false,
               lineCount: stackCount,
+              frequencyLayout,
               performanceMode,
             });
           } else {
@@ -252,6 +255,7 @@ export function VisualizerControls({
     ringCount,
     ringSpeed,
     stackCount,
+    frequencyLayout,
   ]);
 
   return (
@@ -502,23 +506,47 @@ export function VisualizerControls({
           </>
         ) : null}
         {style === "stacked-waves" ? (
-          <label className="flex flex-col gap-1 sm:col-span-2">
-            <span className="flex justify-between text-zinc-400">
-              <span>Wave count</span>
-              <span className="font-mono text-zinc-500">{stackCount}</span>
-            </span>
-            <input
-              type="range"
-              min={6}
-              max={48}
-              step={1}
-              value={stackCount}
-              onChange={(event) =>
-                patchStyle({ stackCount: Number(event.target.value) })
-              }
-              className="accent-cyan-400"
-            />
-          </label>
+          <>
+            <label className="flex flex-col gap-1 sm:col-span-2">
+              <span className="flex justify-between text-zinc-400">
+                <span>Wave count</span>
+                <span className="font-mono text-zinc-500">{stackCount}</span>
+              </span>
+              <input
+                type="range"
+                min={6}
+                max={48}
+                step={1}
+                value={stackCount}
+                onChange={(event) =>
+                  patchStyle({ stackCount: Number(event.target.value) })
+                }
+                className="accent-cyan-400"
+              />
+            </label>
+            <label className="flex flex-col gap-1 sm:col-span-2">
+              <span className="text-zinc-400">Frequency layout</span>
+              <div className="flex flex-wrap gap-2">
+                {FREQUENCY_LAYOUT_OPTIONS.map((option) => (
+                  <motion.button
+                    key={option.value}
+                    type="button"
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() =>
+                      patchStyle({ frequencyLayout: option.value })
+                    }
+                    className={`rounded-lg px-3 py-2 text-sm ${
+                      frequencyLayout === option.value
+                        ? "bg-cyan-400 text-zinc-950"
+                        : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                    }`}
+                  >
+                    {option.label}
+                  </motion.button>
+                ))}
+              </div>
+            </label>
+          </>
         ) : null}
       </div>
 

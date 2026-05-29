@@ -42,6 +42,13 @@ export const PerStyleSettingsSchema = z.object({
   ringCount: z.number().int().min(2).max(24).optional(),
   ringSpeed: z.number().min(1).max(20).optional(),
   stackCount: z.number().int().min(6).max(48).optional(),
+  /**
+   * X-axis FFT mapping for `stacked-waves`. Ignored by other styles.
+   * See `frequencyLayout` on the resolved settings type for details.
+   */
+  frequencyLayout: z
+    .enum(["mirrored", "linear", "linear-reverse"])
+    .optional(),
 });
 
 export type PerStyleSettings = z.infer<typeof PerStyleSettingsSchema>;
@@ -135,7 +142,14 @@ export type ResolvedStyleSettings = {
   ringCount: number;
   ringSpeed: number;
   stackCount: number;
+  frequencyLayout: "mirrored" | "linear" | "linear-reverse";
 };
+
+export const FREQUENCY_LAYOUT_OPTIONS = [
+  { value: "mirrored", label: "Mirrored (bass center)" },
+  { value: "linear", label: "Linear (bass → treble)" },
+  { value: "linear-reverse", label: "Linear reverse (treble → bass)" },
+] as const;
 
 /**
  * Per-style factory defaults. Each visual ships with its own color identity
@@ -155,6 +169,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringCount: DEFAULT_RING_COUNT,
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
+    frequencyLayout: "mirrored",
   },
   "radial-spectrum": {
     lineColor: "#22d3ee",
@@ -168,6 +183,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringCount: DEFAULT_RING_COUNT,
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
+    frequencyLayout: "mirrored",
   },
   "concentric-rings": {
     lineColor: "#fb923c",
@@ -181,6 +197,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringCount: DEFAULT_RING_COUNT,
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
+    frequencyLayout: "mirrored",
   },
   "stacked-waves": {
     /*
@@ -199,6 +216,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringCount: DEFAULT_RING_COUNT,
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
+    frequencyLayout: "mirrored",
   },
 };
 
@@ -240,6 +258,8 @@ export function resolveStyleSettings(
     ringCount: pick(o.ringCount, config.ringCount, d.ringCount),
     ringSpeed: pick(o.ringSpeed, config.ringSpeed, d.ringSpeed),
     stackCount: pick(o.stackCount, config.stackCount, d.stackCount),
+    frequencyLayout:
+      o.frequencyLayout !== undefined ? o.frequencyLayout : d.frequencyLayout,
   };
 
   return result;
