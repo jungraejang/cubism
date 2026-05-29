@@ -69,12 +69,20 @@ export type RendererProps<TConfig, TStream = unknown> = {
  * A complete module: manifest + Zod schema + Controls component (desktop) +
  * Renderer component (renderer device). The single TConfig type parameter
  * ties them together so they cannot drift apart.
+ *
+ * `onPrimaryAction` is an optional contextual action the host invokes when
+ * the user triggers the "primary" / "select" gesture — currently mapped to
+ * the Enter key (and to the macropad's center button on the Pi). Modules
+ * use it to expose a one-shot toggle without consuming a UI slot: the
+ * visualizer cycles through its draw styles, for example. Return the next
+ * config to apply, or `null`/`undefined` if there's nothing to change.
  */
 export type CubismModule<TConfig = unknown> = {
   manifest: ModuleManifest<TConfig>;
   configSchema: ZodType<TConfig>;
   Controls: ComponentType<ControlsProps<TConfig>>;
   Renderer: ComponentType<RendererProps<TConfig>>;
+  onPrimaryAction?: (config: TConfig) => TConfig | null | undefined;
 };
 
 /**

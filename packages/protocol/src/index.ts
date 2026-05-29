@@ -1,11 +1,14 @@
 export type ClientRole = "desktop" | "renderer" | "controller";
 
 /**
- * Hardware controller actions. Currently only the volume-knob rotation is
- * mapped, but we leave the union open so we can later add macro-key and
- * knob-press events without another protocol bump.
+ * Hardware controller actions.
+ *  - `next` / `prev`: cycle the active module (volume knob, ←/→ keys).
+ *  - `select`: trigger the active module's primary contextual action
+ *    (center macropad key, Enter key). Each module decides what this
+ *    means via `CubismModule.onPrimaryAction`; for the visualizer it
+ *    cycles draw styles, others may ignore it.
  */
-export type ControllerAction = "next" | "prev";
+export type ControllerAction = "next" | "prev" | "select";
 
 export type DeviceStatus = "online" | "offline";
 

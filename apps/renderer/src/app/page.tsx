@@ -123,7 +123,9 @@ export default function RendererHomePage() {
    * `module:display`.
    */
   useEffect(() => {
-    function classify(event: KeyboardEvent): "next" | "prev" | null {
+    function classify(
+      event: KeyboardEvent,
+    ): "next" | "prev" | "select" | null {
       // Ignore modified shortcuts so Ctrl-L / Cmd-R etc. don't fight us.
       if (event.ctrlKey || event.metaKey || event.altKey) return null;
       switch (event.key) {
@@ -137,6 +139,11 @@ export default function RendererHomePage() {
         case "PageUp":
         case "AudioVolumeDown":
           return "prev";
+        case "Enter":
+          // Center macropad key maps to Enter in the user's setup; we
+          // re-emit it as the generic "select" action so the desktop
+          // can route to the active module's primary action handler.
+          return "select";
         default:
           return null;
       }

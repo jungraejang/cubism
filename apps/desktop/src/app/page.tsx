@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
 import { modules, randomId, type ModuleStream } from "@cubism/modules";
@@ -47,6 +47,14 @@ export default function DesktopHomePage() {
     buildDefaultConfigMap,
   );
   const [autoRotateMs, setAutoRotateMs] = useState<number | null>(null);
+  /**
+   * Mirror of `selectedId` in a ref so the socket handler (bound once on
+   * mount) can read the latest value without re-binding on every change.
+   */
+  const selectedIdRef = useRef(selectedId);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
   const deviceId = process.env.NEXT_PUBLIC_DEMO_DEVICE_ID ?? "pi-holo-001";
@@ -77,13 +85,32 @@ export default function DesktopHomePage() {
     });
 
     /**
-     * Hardware controller input (Pi-side volume knob). The server fans this
-     * out to the user room; filter by deviceId so a multi-hologram setup
-     * doesn't cross the streams. The existing auto-send useEffect picks up
-     * the new selectedId and pushes the module to the renderer for free.
+     * Hardware controller input (Pi-side volume knob + macropad). The
+     * server fans this out to the user room; filter by deviceId so a
+     * multi-hologram setup doesn't cross the streams. The existing
+     * auto-send useEffect picks up `selectedId` / config changes and
+     * pushes the new module to the renderer for free.
+     *
+     *   next / prev → cycle the active module
+     *   select     → invoke the active module's `onPrimaryAction` if it
+     *                exposes one (visualizer uses this to cycle styles)
      */
     socket.on("controller:input", (payload) => {
       if (payload.deviceId !== deviceId) return;
+      if (payload.action === "select") {
+        // Read latest state via the functional updater to avoid stale
+        // closures over selectedId / configByModule.
+        setConfigByModule((prevConfigs) => {
+          const activeId = selectedIdRef.current;
+          const mod = modules.find((m) => m.manifest.id === activeId);
+          if (!mod || !mod.onPrimaryAction) return prevConfigs;
+          const cur = prevConfigs[mod.manifest.id] ?? mod.manifest.defaultConfig;
+          const next = mod.onPrimaryAction(cur);
+          if (next === null || next === undefined) return prevConfigs;
+          return { ...prevConfigs, [mod.manifest.id]: next };
+        });
+        return;
+      }
       setSelectedId((prev) => {
         if (modules.length === 0) return prev;
         const idx = modules.findIndex((m) => m.manifest.id === prev);
