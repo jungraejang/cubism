@@ -13,6 +13,7 @@ export const VISUALIZER_STYLE_OPTIONS = [
   { value: "radial-spectrum", label: "Radial spectrum" },
   { value: "concentric-rings", label: "Concentric rings" },
   { value: "stacked-waves", label: "Stacked waves" },
+  { value: "filled-spectrum", label: "Filled spectrum" },
 ] as const;
 
 export type VisualizerStyle =
@@ -61,6 +62,7 @@ export const VisualizerConfigSchema = z.object({
       "radial-spectrum",
       "concentric-rings",
       "stacked-waves",
+      "filled-spectrum",
     ])
     .optional(),
 
@@ -75,6 +77,7 @@ export const VisualizerConfigSchema = z.object({
       "radial-spectrum": PerStyleSettingsSchema.optional(),
       "concentric-rings": PerStyleSettingsSchema.optional(),
       "stacked-waves": PerStyleSettingsSchema.optional(),
+      "filled-spectrum": PerStyleSettingsSchema.optional(),
     })
     .optional(),
 
@@ -217,6 +220,26 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "mirrored",
+  },
+  "filled-spectrum": {
+    /*
+     * Sunset palette: yellow at the peak → pink at the baseline. The fill
+     * IS the visualization (no outline drawn by default), so the user
+     * picks the gradient endpoints via lineColor (top) and lineColor2
+     * (bottom). Spectrum is laid out left-to-right by default.
+     */
+    lineColor: "#facc15",
+    lineColor2: "#ec4899",
+    glowColor: "#22d3ee",
+    gridColor: "#1e3a47",
+    lineWidth: 2,
+    sensitivity: 1.8,
+    showGrid: false,
+    barCount: DEFAULT_BAR_COUNT,
+    ringCount: DEFAULT_RING_COUNT,
+    ringSpeed: DEFAULT_RING_SPEED,
+    stackCount: DEFAULT_STACK_COUNT,
+    frequencyLayout: "linear",
   },
 };
 

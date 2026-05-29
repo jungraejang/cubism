@@ -24,6 +24,7 @@ import {
   type Ring,
 } from "./drawConcentricRings";
 import { drawStackedWaves } from "./drawStackedWaves";
+import { drawFilledSpectrum } from "./drawFilledSpectrum";
 import {
   getActiveSource,
   getLastFrame,
@@ -101,6 +102,11 @@ export function VisualizerControls({
   } = resolved;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const rotation = config.rotation ?? 0;
+  /** Styles that expose the secondary "Line 2" color and frequency layout. */
+  const supportsLine2 =
+    style === "stacked-waves" || style === "filled-spectrum";
+  const supportsFrequencyLayout =
+    style === "stacked-waves" || style === "filled-spectrum";
 
   /**
    * Register a frame sink against the store. While Controls is mounted,
@@ -225,6 +231,20 @@ export function VisualizerControls({
               frequencyLayout,
               performanceMode,
             });
+          } else if (style === "filled-spectrum") {
+            drawFilledSpectrum(ctx, frame.freqs, {
+              width,
+              height,
+              lineColor,
+              lineColor2,
+              glowColor,
+              gridColor,
+              lineWidth: lineWidth * ratio,
+              sensitivity,
+              showGrid: false,
+              frequencyLayout,
+              performanceMode,
+            });
           } else {
             drawWaveform(ctx, frame.samples, {
               width,
@@ -346,7 +366,9 @@ export function VisualizerControls({
                 ? "Line = newest ring · Glow = oldest ring"
                 : style === "stacked-waves"
                   ? "Line (top) · Line 2 (bottom) · Glow = edges"
-                  : "Line = waveform · Glow = halo"}
+                  : style === "filled-spectrum"
+                    ? "Line (top) · Line 2 (bottom) of vertical fill gradient"
+                    : "Line = waveform · Glow = halo"}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-4">
@@ -360,9 +382,9 @@ export function VisualizerControls({
               aria-label="Line color"
               className="h-9 w-12 cursor-pointer rounded border border-zinc-700 bg-zinc-800 p-0"
             />
-            <span>{style === "stacked-waves" ? "Line (top)" : "Line"}</span>
+            <span>{supportsLine2 ? "Line (top)" : "Line"}</span>
           </label>
-          {style === "stacked-waves" ? (
+          {supportsLine2 ? (
             <label className="flex items-center gap-2 text-sm text-zinc-300">
               <input
                 type="color"
@@ -506,47 +528,47 @@ export function VisualizerControls({
           </>
         ) : null}
         {style === "stacked-waves" ? (
-          <>
-            <label className="flex flex-col gap-1 sm:col-span-2">
-              <span className="flex justify-between text-zinc-400">
-                <span>Wave count</span>
-                <span className="font-mono text-zinc-500">{stackCount}</span>
-              </span>
-              <input
-                type="range"
-                min={6}
-                max={48}
-                step={1}
-                value={stackCount}
-                onChange={(event) =>
-                  patchStyle({ stackCount: Number(event.target.value) })
-                }
-                className="accent-cyan-400"
-              />
-            </label>
-            <label className="flex flex-col gap-1 sm:col-span-2">
-              <span className="text-zinc-400">Frequency layout</span>
-              <div className="flex flex-wrap gap-2">
-                {FREQUENCY_LAYOUT_OPTIONS.map((option) => (
-                  <motion.button
-                    key={option.value}
-                    type="button"
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() =>
-                      patchStyle({ frequencyLayout: option.value })
-                    }
-                    className={`rounded-lg px-3 py-2 text-sm ${
-                      frequencyLayout === option.value
-                        ? "bg-cyan-400 text-zinc-950"
-                        : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                    }`}
-                  >
-                    {option.label}
-                  </motion.button>
-                ))}
-              </div>
-            </label>
-          </>
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="flex justify-between text-zinc-400">
+              <span>Wave count</span>
+              <span className="font-mono text-zinc-500">{stackCount}</span>
+            </span>
+            <input
+              type="range"
+              min={6}
+              max={48}
+              step={1}
+              value={stackCount}
+              onChange={(event) =>
+                patchStyle({ stackCount: Number(event.target.value) })
+              }
+              className="accent-cyan-400"
+            />
+          </label>
+        ) : null}
+        {supportsFrequencyLayout ? (
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="text-zinc-400">Frequency layout</span>
+            <div className="flex flex-wrap gap-2">
+              {FREQUENCY_LAYOUT_OPTIONS.map((option) => (
+                <motion.button
+                  key={option.value}
+                  type="button"
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() =>
+                    patchStyle({ frequencyLayout: option.value })
+                  }
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    frequencyLayout === option.value
+                      ? "bg-cyan-400 text-zinc-950"
+                      : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                  }`}
+                >
+                  {option.label}
+                </motion.button>
+              ))}
+            </div>
+          </label>
         ) : null}
       </div>
 
@@ -562,7 +584,9 @@ export function VisualizerControls({
               ? "Show inner outline"
               : style === "stacked-waves"
                 ? "Show center guide line"
-                : "Show grid lines"}
+                : style === "filled-spectrum"
+                  ? "Show outline stroke + baseline"
+                  : "Show grid lines"}
           </span>
         </label>
         <label className="flex items-center gap-2 text-sm">

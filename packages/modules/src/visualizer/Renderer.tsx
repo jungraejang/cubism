@@ -24,6 +24,7 @@ import {
   type Ring,
 } from "./drawConcentricRings";
 import { drawStackedWaves } from "./drawStackedWaves";
+import { drawFilledSpectrum } from "./drawFilledSpectrum";
 
 /**
  * Maximum age, in milliseconds, that a received frame is considered "live".
@@ -191,6 +192,20 @@ export function VisualizerRenderer({
           sensitivity,
           showGrid,
           lineCount: stackCount,
+          frequencyLayout,
+          performanceMode,
+        });
+      } else if (style === "filled-spectrum") {
+        drawFilledSpectrum(ctx, freqs, {
+          width,
+          height,
+          lineColor,
+          lineColor2,
+          glowColor,
+          gridColor,
+          lineWidth: lineWidth * ratio,
+          sensitivity,
+          showGrid,
           frequencyLayout,
           performanceMode,
         });
