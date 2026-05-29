@@ -49,6 +49,14 @@ export type DrawFilledSpectrumOptions = {
   showGrid: boolean;
   /** X-axis FFT mapping. See drawStackedWaves for the same set. */
   frequencyLayout: "mirrored" | "linear" | "linear-reverse";
+  /**
+   * 0..1 — fraction of canvas height that fades from the original
+   * gradient color (top of fade) to fully black (at the baseline). The
+   * fade is applied only to painted silhouette pixels via a `source-atop`
+   * composite, so the area below the curve stays the natural canvas
+   * black. 0 = disabled.
+   */
+  bottomFade: number;
   /** Skip extra prettiness for Pi-class hardware. */
   performanceMode?: boolean;
 };
@@ -69,6 +77,7 @@ export function drawFilledSpectrum(
     sensitivity,
     showGrid,
     frequencyLayout,
+    bottomFade,
     performanceMode = false,
   } = opts;
 
@@ -161,6 +170,32 @@ export function drawFilledSpectrum(
 
   ctx.fillStyle = gradient;
   ctx.fill();
+
+  /*
+   * Bottom-fade overlay. With composite mode "source-atop" the gradient
+   * paints ONLY where the silhouette is already drawn, leaving the
+   * canvas background untouched. The overlay itself is a black-to-
+   * transparent vertical gradient ending in opaque black at the baseline,
+   * which smoothly blends the colored fill into the surrounding black.
+   *
+   * Clamp the fade height to [4px, baselineY] so a tall fade on a tiny
+   * canvas can't invert.
+   */
+  if (bottomFade > 0) {
+    const fadeHeight = Math.min(
+      baselineY,
+      Math.max(4, height * bottomFade),
+    );
+    const fadeStartY = baselineY - fadeHeight;
+    const overlay = ctx.createLinearGradient(0, fadeStartY, 0, baselineY);
+    overlay.addColorStop(0, "rgba(0,0,0,0)");
+    overlay.addColorStop(1, "rgba(0,0,0,1)");
+    const prevComposite = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = "source-atop";
+    ctx.fillStyle = overlay;
+    ctx.fillRect(0, fadeStartY, width, fadeHeight);
+    ctx.globalCompositeOperation = prevComposite;
+  }
 
   if (showGrid) {
     /*

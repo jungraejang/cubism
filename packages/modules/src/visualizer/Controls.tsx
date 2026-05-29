@@ -99,6 +99,7 @@ export function VisualizerControls({
     ringSpeed,
     stackCount,
     frequencyLayout,
+    bottomFade,
   } = resolved;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const rotation = config.rotation ?? 0;
@@ -243,6 +244,7 @@ export function VisualizerControls({
               sensitivity,
               showGrid: false,
               frequencyLayout,
+              bottomFade,
               performanceMode,
             });
           } else {
@@ -276,6 +278,7 @@ export function VisualizerControls({
     ringSpeed,
     stackCount,
     frequencyLayout,
+    bottomFade,
   ]);
 
   return (
@@ -568,6 +571,30 @@ export function VisualizerControls({
                 </motion.button>
               ))}
             </div>
+          </label>
+        ) : null}
+        {style === "filled-spectrum" ? (
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="flex justify-between text-zinc-400">
+              <span>Bottom fade</span>
+              <span className="font-mono text-zinc-500">
+                {Math.round(bottomFade * 100)}%
+              </span>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={bottomFade}
+              onChange={(event) =>
+                patchStyle({ bottomFade: Number(event.target.value) })
+              }
+              className="accent-cyan-400"
+            />
+            <span className="text-xs text-zinc-500">
+              Blends the bottom of the fill into the black background.
+            </span>
           </label>
         ) : null}
       </div>

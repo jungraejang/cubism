@@ -59,6 +59,7 @@ export function VisualizerRenderer({
     ringSpeed,
     stackCount,
     frequencyLayout,
+    bottomFade,
   } = resolveStyleSettings(config, style);
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const { rotate, scaleX, scaleY } = orientationTransform(config);
@@ -207,6 +208,7 @@ export function VisualizerRenderer({
           sensitivity,
           showGrid,
           frequencyLayout,
+          bottomFade,
           performanceMode,
         });
       } else {
@@ -240,6 +242,7 @@ export function VisualizerRenderer({
     ringSpeed,
     stackCount,
     frequencyLayout,
+    bottomFade,
     performanceMode,
   ]);
 

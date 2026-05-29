@@ -50,6 +50,13 @@ export const PerStyleSettingsSchema = z.object({
   frequencyLayout: z
     .enum(["mirrored", "linear", "linear-reverse"])
     .optional(),
+  /**
+   * Strength of the "fade to black" overlay applied to the bottom of the
+   * filled-spectrum silhouette so it blends into the surrounding canvas.
+   * 0 = no fade, 1 = entire fill height fades to black at the baseline.
+   * Used only by `filled-spectrum`; other styles ignore.
+   */
+  bottomFade: z.number().min(0).max(1).optional(),
 });
 
 export type PerStyleSettings = z.infer<typeof PerStyleSettingsSchema>;
@@ -146,6 +153,7 @@ export type ResolvedStyleSettings = {
   ringSpeed: number;
   stackCount: number;
   frequencyLayout: "mirrored" | "linear" | "linear-reverse";
+  bottomFade: number;
 };
 
 export const FREQUENCY_LAYOUT_OPTIONS = [
@@ -173,6 +181,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "mirrored",
+    bottomFade: 0,
   },
   "radial-spectrum": {
     lineColor: "#22d3ee",
@@ -187,6 +196,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "mirrored",
+    bottomFade: 0,
   },
   "concentric-rings": {
     lineColor: "#fb923c",
@@ -201,6 +211,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "mirrored",
+    bottomFade: 0,
   },
   "stacked-waves": {
     /*
@@ -220,6 +231,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "mirrored",
+    bottomFade: 0,
   },
   "filled-spectrum": {
     /*
@@ -240,6 +252,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "linear",
+    bottomFade: 0.45,
   },
 };
 
@@ -283,6 +296,7 @@ export function resolveStyleSettings(
     stackCount: pick(o.stackCount, config.stackCount, d.stackCount),
     frequencyLayout:
       o.frequencyLayout !== undefined ? o.frequencyLayout : d.frequencyLayout,
+    bottomFade: o.bottomFade !== undefined ? o.bottomFade : d.bottomFade,
   };
 
   return result;
