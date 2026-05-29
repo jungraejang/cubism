@@ -32,6 +32,11 @@ import {
   type FractalState,
 } from "./drawFractal";
 import {
+  drawOrbitArcs,
+  createOrbitArcsState,
+  type OrbitArcsState,
+} from "./drawOrbitArcs";
+import {
   getActiveSource,
   getLastFrame,
   isCapturing,
@@ -114,7 +119,8 @@ export function VisualizerControls({
   const supportsLine2 =
     style === "stacked-waves" ||
     style === "filled-spectrum" ||
-    style === "pixel-bars";
+    style === "pixel-bars" ||
+    style === "orbit-arcs";
   const supportsFrequencyLayout =
     style === "stacked-waves" ||
     style === "filled-spectrum" ||
@@ -183,6 +189,12 @@ export function VisualizerControls({
   const previewFractalRef = useRef<FractalState>(createFractalState());
   useEffect(() => {
     previewFractalRef.current = createFractalState();
+  }, [style]);
+
+  /** Preview-local orbit-arcs rotation phases. */
+  const previewOrbitArcsRef = useRef<OrbitArcsState>(createOrbitArcsState());
+  useEffect(() => {
+    previewOrbitArcsRef.current = createOrbitArcsState();
   }, [style]);
 
   /**
@@ -292,6 +304,22 @@ export function VisualizerControls({
               sensitivity,
               showGrid: false,
               state: previewFractalRef.current,
+              performanceMode,
+            });
+          } else if (style === "orbit-arcs") {
+            drawOrbitArcs(ctx, frame.freqs, {
+              width,
+              height,
+              lineColor,
+              lineColor2,
+              glowColor,
+              gridColor,
+              lineWidth: lineWidth * ratio,
+              sensitivity,
+              showGrid: false,
+              ringCount,
+              ringSpeed,
+              state: previewOrbitArcsRef.current,
               performanceMode,
             });
           } else {
@@ -424,7 +452,9 @@ export function VisualizerControls({
                       ? "Line (top) · Line 2 (bottom) — gradient interpolated through HSL"
                       : style === "fractal"
                         ? "Line = curve hue base (hue cycles) · Glow = halo"
-                        : "Line = waveform · Glow = halo"}
+                        : style === "orbit-arcs"
+                          ? "Line = outer arc · Line 2 = inner arc · Glow = halo (inner arc is rainbow)"
+                          : "Line = waveform · Glow = halo"}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-4">
@@ -583,17 +613,17 @@ export function VisualizerControls({
             </label>
           </>
         ) : null}
-        {style === "concentric-rings" ? (
+        {style === "concentric-rings" || style === "orbit-arcs" ? (
           <>
             <label className="flex flex-col gap-1">
               <span className="flex justify-between text-zinc-400">
-                <span>Ring count</span>
+                <span>{style === "orbit-arcs" ? "Arc count" : "Ring count"}</span>
                 <span className="font-mono text-zinc-500">{ringCount}</span>
               </span>
               <input
                 type="range"
                 min={2}
-                max={24}
+                max={style === "orbit-arcs" ? 12 : 24}
                 step={1}
                 value={ringCount}
                 onChange={(event) =>
@@ -604,8 +634,13 @@ export function VisualizerControls({
             </label>
             <label className="flex flex-col gap-1">
               <span className="flex justify-between text-zinc-400">
-                <span>Ripple speed</span>
-                <span className="font-mono text-zinc-500">{ringSpeed}px/f</span>
+                <span>
+                  {style === "orbit-arcs" ? "Rotation speed" : "Ripple speed"}
+                </span>
+                <span className="font-mono text-zinc-500">
+                  {ringSpeed}
+                  {style === "orbit-arcs" ? "°/s" : "px/f"}
+                </span>
               </span>
               <input
                 type="range"

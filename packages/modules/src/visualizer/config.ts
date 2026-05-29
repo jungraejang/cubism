@@ -16,6 +16,7 @@ export const VISUALIZER_STYLE_OPTIONS = [
   { value: "filled-spectrum", label: "Filled spectrum" },
   { value: "pixel-bars", label: "Pixel bars" },
   { value: "fractal", label: "Fractal feedback" },
+  { value: "orbit-arcs", label: "Orbit arcs" },
 ] as const;
 
 export type VisualizerStyle =
@@ -80,6 +81,7 @@ export const VisualizerConfigSchema = z.object({
       "filled-spectrum",
       "pixel-bars",
       "fractal",
+      "orbit-arcs",
     ])
     .optional(),
 
@@ -97,6 +99,7 @@ export const VisualizerConfigSchema = z.object({
       "filled-spectrum": PerStyleSettingsSchema.optional(),
       "pixel-bars": PerStyleSettingsSchema.optional(),
       fractal: PerStyleSettingsSchema.optional(),
+      "orbit-arcs": PerStyleSettingsSchema.optional(),
     })
     .optional(),
 
@@ -313,6 +316,33 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     barCount: DEFAULT_BAR_COUNT,
     ringCount: DEFAULT_RING_COUNT,
     ringSpeed: DEFAULT_RING_SPEED,
+    stackCount: DEFAULT_STACK_COUNT,
+    frequencyLayout: "linear",
+    bottomFade: 0,
+    cellRows: DEFAULT_CELL_ROWS,
+  },
+  "orbit-arcs": {
+    /*
+     * Concentric glowing arcs at offset rotations. `lineColor` →
+     * `lineColor2` is the outer-to-inner palette gradient (sampled in
+     * HSL so the ramp reads as a hue sweep, not a muddy RGB lerp);
+     * `glowColor` is the shadow halo on each arc in non-perf mode. The
+     * innermost arc paints itself with a rainbow conic gradient that
+     * spins with the arc, which is why it looks like a multicolor
+     * sliver in the reference screenshot. `ringCount` doubles as
+     * "arc count"; `ringSpeed` is the base angular speed (deg/sec)
+     * before per-arc variance and audio modulation.
+     */
+    lineColor: "#ef4444",
+    lineColor2: "#22c55e",
+    glowColor: "#a855f7",
+    gridColor: "#1e3a47",
+    lineWidth: 6,
+    sensitivity: 1.4,
+    showGrid: false,
+    barCount: DEFAULT_BAR_COUNT,
+    ringCount: 4,
+    ringSpeed: 6,
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "linear",
     bottomFade: 0,

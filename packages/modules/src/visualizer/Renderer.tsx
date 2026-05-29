@@ -31,6 +31,11 @@ import {
   createFractalState,
   type FractalState,
 } from "./drawFractal";
+import {
+  drawOrbitArcs,
+  createOrbitArcsState,
+  type OrbitArcsState,
+} from "./drawOrbitArcs";
 
 /**
  * Maximum age, in milliseconds, that a received frame is considered "live".
@@ -120,6 +125,15 @@ export function VisualizerRenderer({
   const fractalStateRef = useRef<FractalState>(createFractalState());
   useEffect(() => {
     fractalStateRef.current = createFractalState();
+  }, [style]);
+
+  /*
+   * Persistent per-arc rotation phases + hue cycle for the orbit-arcs
+   * style. Reset on style change so we don't carry stale phases.
+   */
+  const orbitArcsStateRef = useRef<OrbitArcsState>(createOrbitArcsState());
+  useEffect(() => {
+    orbitArcsStateRef.current = createOrbitArcsState();
   }, [style]);
 
   useEffect(() => {
@@ -258,6 +272,22 @@ export function VisualizerRenderer({
           state: fractalStateRef.current,
           performanceMode,
         });
+      } else if (style === "orbit-arcs") {
+        drawOrbitArcs(ctx, freqs, {
+          width,
+          height,
+          lineColor,
+          lineColor2,
+          glowColor,
+          gridColor,
+          lineWidth: lineWidth * ratio,
+          sensitivity,
+          showGrid,
+          ringCount,
+          ringSpeed,
+          state: orbitArcsStateRef.current,
+          performanceMode,
+        });
       } else {
         drawWaveform(ctx, samples, {
           width,
@@ -314,7 +344,9 @@ export function VisualizerRenderer({
           <canvas
             ref={canvasRef}
             className={
-              style === "radial-spectrum" || style === "concentric-rings"
+              style === "radial-spectrum" ||
+              style === "concentric-rings" ||
+              style === "orbit-arcs"
                 ? "h-[90vh] w-[90vh] max-w-[90vw]"
                 : "h-[80vh] w-[90vw]"
             }
