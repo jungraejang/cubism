@@ -139,10 +139,13 @@ export default function RendererHomePage() {
         case "PageUp":
         case "AudioVolumeDown":
           return "prev";
+        case " ":
+        case "Spacebar":
         case "Enter":
-          // Center macropad key maps to Enter in the user's setup; we
-          // re-emit it as the generic "select" action so the desktop
-          // can route to the active module's primary action handler.
+          // Center macropad key may be mapped to Space or Enter depending
+          // on the user's setup; accept both (and `Spacebar` for older
+          // browsers) and re-emit as the generic "select" action so the
+          // desktop can route to the active module's primary action.
           return "select";
         default:
           return null;
