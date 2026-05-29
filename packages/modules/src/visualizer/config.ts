@@ -14,6 +14,7 @@ export const VISUALIZER_STYLE_OPTIONS = [
   { value: "concentric-rings", label: "Concentric rings" },
   { value: "stacked-waves", label: "Stacked waves" },
   { value: "filled-spectrum", label: "Filled spectrum" },
+  { value: "pixel-bars", label: "Pixel bars" },
 ] as const;
 
 export type VisualizerStyle =
@@ -57,6 +58,12 @@ export const PerStyleSettingsSchema = z.object({
    * Used only by `filled-spectrum`; other styles ignore.
    */
   bottomFade: z.number().min(0).max(1).optional(),
+  /**
+   * Number of cells stacked vertically in each `pixel-bars` column. The
+   * bar's magnitude lights up that many cells from the bottom. Other
+   * styles ignore this field.
+   */
+  cellRows: z.number().int().min(4).max(48).optional(),
 });
 
 export type PerStyleSettings = z.infer<typeof PerStyleSettingsSchema>;
@@ -70,6 +77,7 @@ export const VisualizerConfigSchema = z.object({
       "concentric-rings",
       "stacked-waves",
       "filled-spectrum",
+      "pixel-bars",
     ])
     .optional(),
 
@@ -85,6 +93,7 @@ export const VisualizerConfigSchema = z.object({
       "concentric-rings": PerStyleSettingsSchema.optional(),
       "stacked-waves": PerStyleSettingsSchema.optional(),
       "filled-spectrum": PerStyleSettingsSchema.optional(),
+      "pixel-bars": PerStyleSettingsSchema.optional(),
     })
     .optional(),
 
@@ -134,6 +143,7 @@ export const DEFAULT_BAR_COUNT = 96;
 export const DEFAULT_RING_COUNT = 8;
 export const DEFAULT_RING_SPEED = 6;
 export const DEFAULT_STACK_COUNT = 24;
+export const DEFAULT_CELL_ROWS = 16;
 export const DEFAULT_PERFORMANCE_MODE = true;
 
 /**
@@ -154,6 +164,7 @@ export type ResolvedStyleSettings = {
   stackCount: number;
   frequencyLayout: "mirrored" | "linear" | "linear-reverse";
   bottomFade: number;
+  cellRows: number;
 };
 
 export const FREQUENCY_LAYOUT_OPTIONS = [
@@ -182,6 +193,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "mirrored",
     bottomFade: 0,
+    cellRows: DEFAULT_CELL_ROWS,
   },
   "radial-spectrum": {
     lineColor: "#22d3ee",
@@ -197,6 +209,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "mirrored",
     bottomFade: 0,
+    cellRows: DEFAULT_CELL_ROWS,
   },
   "concentric-rings": {
     lineColor: "#fb923c",
@@ -212,6 +225,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "mirrored",
     bottomFade: 0,
+    cellRows: DEFAULT_CELL_ROWS,
   },
   "stacked-waves": {
     /*
@@ -232,6 +246,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "mirrored",
     bottomFade: 0,
+    cellRows: DEFAULT_CELL_ROWS,
   },
   "filled-spectrum": {
     /*
@@ -253,6 +268,28 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     stackCount: DEFAULT_STACK_COUNT,
     frequencyLayout: "linear",
     bottomFade: 0.45,
+    cellRows: DEFAULT_CELL_ROWS,
+  },
+  "pixel-bars": {
+    /*
+     * Classic LED-equalizer palette. HSL interpolation between these two
+     * endpoints flows through cyan-blue in the middle so the gradient
+     * reads as a rainbow ramp rather than a muddy RGB lerp.
+     */
+    lineColor: "#34d399",
+    lineColor2: "#d946ef",
+    glowColor: "#22d3ee",
+    gridColor: "#1e3a47",
+    lineWidth: 1,
+    sensitivity: 1.6,
+    showGrid: false,
+    barCount: 32,
+    ringCount: DEFAULT_RING_COUNT,
+    ringSpeed: DEFAULT_RING_SPEED,
+    stackCount: DEFAULT_STACK_COUNT,
+    frequencyLayout: "linear",
+    bottomFade: 0,
+    cellRows: DEFAULT_CELL_ROWS,
   },
 };
 
@@ -297,6 +334,9 @@ export function resolveStyleSettings(
     frequencyLayout:
       o.frequencyLayout !== undefined ? o.frequencyLayout : d.frequencyLayout,
     bottomFade: o.bottomFade !== undefined ? o.bottomFade : d.bottomFade,
+    // cellRows has no legacy flat-field counterpart — new field added
+    // with the pixel-bars style.
+    cellRows: o.cellRows !== undefined ? o.cellRows : d.cellRows,
   };
 
   return result;

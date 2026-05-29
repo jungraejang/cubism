@@ -25,6 +25,7 @@ import {
 } from "./drawConcentricRings";
 import { drawStackedWaves } from "./drawStackedWaves";
 import { drawFilledSpectrum } from "./drawFilledSpectrum";
+import { drawPixelBars } from "./drawPixelBars";
 
 /**
  * Maximum age, in milliseconds, that a received frame is considered "live".
@@ -60,6 +61,7 @@ export function VisualizerRenderer({
     stackCount,
     frequencyLayout,
     bottomFade,
+    cellRows,
   } = resolveStyleSettings(config, style);
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const { rotate, scaleX, scaleY } = orientationTransform(config);
@@ -211,6 +213,22 @@ export function VisualizerRenderer({
           bottomFade,
           performanceMode,
         });
+      } else if (style === "pixel-bars") {
+        drawPixelBars(ctx, freqs, {
+          width,
+          height,
+          lineColor,
+          lineColor2,
+          glowColor,
+          gridColor,
+          lineWidth: lineWidth * ratio,
+          sensitivity,
+          showGrid,
+          barCount,
+          cellRows,
+          frequencyLayout,
+          performanceMode,
+        });
       } else {
         drawWaveform(ctx, samples, {
           width,
@@ -243,6 +261,7 @@ export function VisualizerRenderer({
     stackCount,
     frequencyLayout,
     bottomFade,
+    cellRows,
     performanceMode,
   ]);
 

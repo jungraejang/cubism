@@ -25,6 +25,7 @@ import {
 } from "./drawConcentricRings";
 import { drawStackedWaves } from "./drawStackedWaves";
 import { drawFilledSpectrum } from "./drawFilledSpectrum";
+import { drawPixelBars } from "./drawPixelBars";
 import {
   getActiveSource,
   getLastFrame,
@@ -100,14 +101,19 @@ export function VisualizerControls({
     stackCount,
     frequencyLayout,
     bottomFade,
+    cellRows,
   } = resolved;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const rotation = config.rotation ?? 0;
   /** Styles that expose the secondary "Line 2" color and frequency layout. */
   const supportsLine2 =
-    style === "stacked-waves" || style === "filled-spectrum";
+    style === "stacked-waves" ||
+    style === "filled-spectrum" ||
+    style === "pixel-bars";
   const supportsFrequencyLayout =
-    style === "stacked-waves" || style === "filled-spectrum";
+    style === "stacked-waves" ||
+    style === "filled-spectrum" ||
+    style === "pixel-bars";
 
   /**
    * Register a frame sink against the store. While Controls is mounted,
@@ -247,6 +253,22 @@ export function VisualizerControls({
               bottomFade,
               performanceMode,
             });
+          } else if (style === "pixel-bars") {
+            drawPixelBars(ctx, frame.freqs, {
+              width,
+              height,
+              lineColor,
+              lineColor2,
+              glowColor,
+              gridColor,
+              lineWidth: lineWidth * ratio,
+              sensitivity,
+              showGrid: false,
+              barCount,
+              cellRows,
+              frequencyLayout,
+              performanceMode,
+            });
           } else {
             drawWaveform(ctx, frame.samples, {
               width,
@@ -279,6 +301,8 @@ export function VisualizerControls({
     stackCount,
     frequencyLayout,
     bottomFade,
+    barCount,
+    cellRows,
   ]);
 
   return (
@@ -371,7 +395,9 @@ export function VisualizerControls({
                   ? "Line (top) · Line 2 (bottom) · Glow = edges"
                   : style === "filled-spectrum"
                     ? "Line (top) · Line 2 (bottom) of vertical fill gradient"
-                    : "Line = waveform · Glow = halo"}
+                    : style === "pixel-bars"
+                      ? "Line (top) · Line 2 (bottom) — gradient interpolated through HSL"
+                      : "Line = waveform · Glow = halo"}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-4">
@@ -491,6 +517,44 @@ export function VisualizerControls({
               className="accent-cyan-400"
             />
           </label>
+        ) : null}
+        {style === "pixel-bars" ? (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="flex justify-between text-zinc-400">
+                <span>Bar count</span>
+                <span className="font-mono text-zinc-500">{barCount}</span>
+              </span>
+              <input
+                type="range"
+                min={24}
+                max={96}
+                step={1}
+                value={barCount}
+                onChange={(event) =>
+                  patchStyle({ barCount: Number(event.target.value) })
+                }
+                className="accent-cyan-400"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="flex justify-between text-zinc-400">
+                <span>Cell rows</span>
+                <span className="font-mono text-zinc-500">{cellRows}</span>
+              </span>
+              <input
+                type="range"
+                min={4}
+                max={48}
+                step={1}
+                value={cellRows}
+                onChange={(event) =>
+                  patchStyle({ cellRows: Number(event.target.value) })
+                }
+                className="accent-cyan-400"
+              />
+            </label>
+          </>
         ) : null}
         {style === "concentric-rings" ? (
           <>
@@ -613,7 +677,9 @@ export function VisualizerControls({
                 ? "Show center guide line"
                 : style === "filled-spectrum"
                   ? "Show outline stroke + baseline"
-                  : "Show grid lines"}
+                  : style === "pixel-bars"
+                    ? "Show dim unlit cells"
+                    : "Show grid lines"}
           </span>
         </label>
         <label className="flex items-center gap-2 text-sm">
