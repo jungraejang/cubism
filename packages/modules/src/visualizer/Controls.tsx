@@ -14,6 +14,7 @@ import {
   DEFAULT_PERFORMANCE_MODE,
   DEFAULT_RING_COUNT,
   DEFAULT_RING_SPEED,
+  DEFAULT_STACK_COUNT,
   DEFAULT_SENSITIVITY,
   DEFAULT_STYLE,
   VISUALIZER_STYLE_OPTIONS,
@@ -28,6 +29,7 @@ import {
   tickAndDrawConcentricRings,
   type Ring,
 } from "./drawConcentricRings";
+import { drawStackedWaves } from "./drawStackedWaves";
 import {
   getActiveSource,
   getLastFrame,
@@ -79,6 +81,7 @@ export function VisualizerControls({
   const barCount = config.barCount ?? DEFAULT_BAR_COUNT;
   const ringCount = config.ringCount ?? DEFAULT_RING_COUNT;
   const ringSpeed = config.ringSpeed ?? DEFAULT_RING_SPEED;
+  const stackCount = config.stackCount ?? DEFAULT_STACK_COUNT;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const rotation = config.rotation ?? 0;
 
@@ -190,6 +193,19 @@ export function VisualizerControls({
               advance: true,
               performanceMode,
             });
+          } else if (style === "stacked-waves") {
+            drawStackedWaves(ctx, frame.freqs, {
+              width,
+              height,
+              lineColor,
+              glowColor,
+              gridColor,
+              lineWidth: lineWidth * ratio,
+              sensitivity,
+              showGrid: false,
+              lineCount: stackCount,
+              performanceMode,
+            });
           } else {
             drawWaveform(ctx, frame.samples, {
               width,
@@ -218,6 +234,7 @@ export function VisualizerControls({
     performanceMode,
     ringCount,
     ringSpeed,
+    stackCount,
   ]);
 
   return (
@@ -306,7 +323,9 @@ export function VisualizerControls({
               ? "Line = bar base · Glow = bar tip"
               : style === "concentric-rings"
                 ? "Line = newest ring · Glow = oldest ring"
-                : "Line = waveform · Glow = halo"}
+                : style === "stacked-waves"
+                  ? "Line = ridge peak · Glow = top/bottom edges"
+                  : "Line = waveform · Glow = halo"}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-4">
@@ -351,7 +370,9 @@ export function VisualizerControls({
                 ? "Bar thickness"
                 : style === "concentric-rings"
                   ? "Ring thickness"
-                  : "Line width"}
+                  : style === "stacked-waves"
+                    ? "Wave thickness"
+                    : "Line width"}
             </span>
             <span className="font-mono text-zinc-500">{lineWidth}px</span>
           </span>
@@ -443,6 +464,25 @@ export function VisualizerControls({
             </label>
           </>
         ) : null}
+        {style === "stacked-waves" ? (
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="flex justify-between text-zinc-400">
+              <span>Wave count</span>
+              <span className="font-mono text-zinc-500">{stackCount}</span>
+            </span>
+            <input
+              type="range"
+              min={6}
+              max={48}
+              step={1}
+              value={stackCount}
+              onChange={(event) =>
+                patch({ stackCount: Number(event.target.value) })
+              }
+              className="accent-cyan-400"
+            />
+          </label>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -455,7 +495,9 @@ export function VisualizerControls({
           <span>
             {style === "radial-spectrum" || style === "concentric-rings"
               ? "Show inner outline"
-              : "Show grid lines"}
+              : style === "stacked-waves"
+                ? "Show center guide line"
+                : "Show grid lines"}
           </span>
         </label>
         <label className="flex items-center gap-2 text-sm">

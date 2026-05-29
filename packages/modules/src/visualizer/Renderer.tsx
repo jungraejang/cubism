@@ -17,6 +17,7 @@ import {
   DEFAULT_PERFORMANCE_MODE,
   DEFAULT_RING_COUNT,
   DEFAULT_RING_SPEED,
+  DEFAULT_STACK_COUNT,
   DEFAULT_SENSITIVITY,
   DEFAULT_STYLE,
   FREQUENCY_BIN_COUNT,
@@ -30,6 +31,7 @@ import {
   tickAndDrawConcentricRings,
   type Ring,
 } from "./drawConcentricRings";
+import { drawStackedWaves } from "./drawStackedWaves";
 
 /**
  * Maximum age, in milliseconds, that a received frame is considered "live".
@@ -60,6 +62,7 @@ export function VisualizerRenderer({
   const barCount = config.barCount ?? DEFAULT_BAR_COUNT;
   const ringCount = config.ringCount ?? DEFAULT_RING_COUNT;
   const ringSpeed = config.ringSpeed ?? DEFAULT_RING_SPEED;
+  const stackCount = config.stackCount ?? DEFAULT_STACK_COUNT;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const { rotate, scaleX, scaleY } = orientationTransform(config);
 
@@ -180,6 +183,19 @@ export function VisualizerRenderer({
           advance: fresh === true,
           performanceMode,
         });
+      } else if (style === "stacked-waves") {
+        drawStackedWaves(ctx, freqs, {
+          width,
+          height,
+          lineColor,
+          glowColor,
+          gridColor,
+          lineWidth: lineWidth * ratio,
+          sensitivity,
+          showGrid,
+          lineCount: stackCount,
+          performanceMode,
+        });
       } else {
         drawWaveform(ctx, samples, {
           width,
@@ -208,6 +224,7 @@ export function VisualizerRenderer({
     barCount,
     ringCount,
     ringSpeed,
+    stackCount,
     performanceMode,
   ]);
 
