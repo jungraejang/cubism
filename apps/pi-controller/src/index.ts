@@ -5,13 +5,7 @@ import type {
   ServerToClientEvents,
 } from "@cubism/protocol";
 
-import {
-  EV_KEY,
-  KEY_VOLUMEDOWN,
-  KEY_VOLUMEUP,
-  watchEvdev,
-  type EvdevWatcher,
-} from "./evdev.js";
+import { EV_KEY, watchEvdev, type EvdevWatcher } from "./evdev.js";
 import { findDevicesByVidPid, type FoundDevice } from "./findDevice.js";
 
 const VENDOR = process.env.CUBISM_CONTROLLER_VID ?? "1189";
@@ -22,6 +16,31 @@ const USER_ID = process.env.CUBISM_USER_ID ?? "demo-user";
 const DEBUG =
   process.env.CUBISM_CONTROLLER_DEBUG === "1" ||
   process.env.CUBISM_CONTROLLER_DEBUG === "true";
+
+/**
+ * Comma-separated list of `/dev/input/eventN` paths to watch directly,
+ * bypassing VID:PID auto-discovery. Useful when the auto-picker can't
+ * narrow down which interface carries the knob.
+ */
+const DEVICE_OVERRIDE = (process.env.CUBISM_CONTROLLER_DEVICES ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+/**
+ * Comma-separated `keyCode` values that should be treated as the
+ * volume-up / volume-down equivalent. Lets the user remap when the knob
+ * sends something exotic. Defaults: KEY_VOLUMEUP=115, KEY_VOLUMEDOWN=114.
+ */
+function parseKeyCodes(value: string | undefined, fallback: number[]): number[] {
+  if (!value) return fallback;
+  return value
+    .split(",")
+    .map((s) => Number.parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n));
+}
+const NEXT_KEYS = parseKeyCodes(process.env.CUBISM_CONTROLLER_NEXT_KEY, [115]);
+const PREV_KEYS = parseKeyCodes(process.env.CUBISM_CONTROLLER_PREV_KEY, [114]);
 
 const RESCAN_INITIAL_MS = 1_000;
 const RESCAN_MAX_MS = 15_000;
@@ -119,9 +138,9 @@ async function streamDevices(
           // Only key-down. Key-up (value=0) and auto-repeat (value=2)
           // would spam multiple emits per detent.
           if (event.value !== 1) return;
-          if (event.code === KEY_VOLUMEUP) {
+          if (NEXT_KEYS.includes(event.code)) {
             emitAction(socket, "next");
-          } else if (event.code === KEY_VOLUMEDOWN) {
+          } else if (PREV_KEYS.includes(event.code)) {
             emitAction(socket, "prev");
           }
         },
@@ -139,6 +158,11 @@ async function streamDevices(
 }
 
 async function discoverDevices(): Promise<FoundDevice[]> {
+  if (DEVICE_OVERRIDE.length > 0) {
+    log(`using device override: ${DEVICE_OVERRIDE.join(", ")}`);
+    return DEVICE_OVERRIDE.map((path) => ({ path, name: path }));
+  }
+
   let delay = RESCAN_INITIAL_MS;
   while (true) {
     const devices = await findDevicesByVidPid(VENDOR, PRODUCT);
@@ -157,6 +181,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main() {
+  log(`startup: next=${NEXT_KEYS.join(",")} prev=${PREV_KEYS.join(",")} debug=${DEBUG}`);
   const socket = connectSocket();
 
   let shuttingDown = false;
@@ -164,8 +189,15 @@ async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     log(`received ${signal}, shutting down`);
-    socket.close();
-    process.exit(0);
+    try {
+      socket.close();
+    } catch {
+      // ignore
+    }
+    // Use _exit so any pending evdev streams or socket retries can't
+    // delay the exit — systemd's TimeoutStopSec was firing before this
+    // function returned in some configurations.
+    setImmediate(() => process.exit(0));
   }
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));

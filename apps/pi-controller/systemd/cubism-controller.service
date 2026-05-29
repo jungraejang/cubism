@@ -28,8 +28,22 @@ Environment=CUBISM_USER_ID=demo-user
 
 Restart=always
 RestartSec=2
+TimeoutStopSec=5
+KillMode=mixed
 User=pi
 SupplementaryGroups=input
+
+# Uncomment to dump every key event to the journal for debugging.
+# Environment=CUBISM_CONTROLLER_DEBUG=1
+
+# Uncomment to point at specific event devices (comma-separated) and skip
+# VID:PID auto-detection.
+# Environment=CUBISM_CONTROLLER_DEVICES=/dev/input/event9,/dev/input/event10,/dev/input/event11
+
+# Uncomment to remap which key codes count as next/prev. Defaults are
+# KEY_VOLUMEUP=115 and KEY_VOLUMEDOWN=114.
+# Environment=CUBISM_CONTROLLER_NEXT_KEY=115
+# Environment=CUBISM_CONTROLLER_PREV_KEY=114
 
 [Install]
 WantedBy=multi-user.target
