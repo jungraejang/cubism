@@ -26,6 +26,11 @@ import {
 import { drawStackedWaves } from "./drawStackedWaves";
 import { drawFilledSpectrum } from "./drawFilledSpectrum";
 import { drawPixelBars } from "./drawPixelBars";
+import {
+  drawFractal,
+  createFractalState,
+  type FractalState,
+} from "./drawFractal";
 
 /**
  * Maximum age, in milliseconds, that a received frame is considered "live".
@@ -105,6 +110,16 @@ export function VisualizerRenderer({
   const ringsRef = useRef<Ring[]>([]);
   useEffect(() => {
     ringsRef.current = [];
+  }, [style]);
+
+  /*
+   * Persistent ping-pong buffers + hue state for the fractal-feedback
+   * style. Reset when the style changes so a stale buffer doesn't bleed
+   * into a different visualization.
+   */
+  const fractalStateRef = useRef<FractalState>(createFractalState());
+  useEffect(() => {
+    fractalStateRef.current = createFractalState();
   }, [style]);
 
   useEffect(() => {
@@ -227,6 +242,20 @@ export function VisualizerRenderer({
           barCount,
           cellRows,
           frequencyLayout,
+          performanceMode,
+        });
+      } else if (style === "fractal") {
+        drawFractal(ctx, samples, freqs, {
+          width,
+          height,
+          lineColor,
+          lineColor2,
+          glowColor,
+          gridColor,
+          lineWidth: lineWidth * ratio,
+          sensitivity,
+          showGrid,
+          state: fractalStateRef.current,
           performanceMode,
         });
       } else {

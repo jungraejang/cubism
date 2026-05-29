@@ -27,6 +27,11 @@ import { drawStackedWaves } from "./drawStackedWaves";
 import { drawFilledSpectrum } from "./drawFilledSpectrum";
 import { drawPixelBars } from "./drawPixelBars";
 import {
+  drawFractal,
+  createFractalState,
+  type FractalState,
+} from "./drawFractal";
+import {
   getActiveSource,
   getLastFrame,
   isCapturing,
@@ -174,6 +179,12 @@ export function VisualizerControls({
     previewRingsRef.current = [];
   }, [style]);
 
+  /** Preview-local fractal state — independent from the renderer's. */
+  const previewFractalRef = useRef<FractalState>(createFractalState());
+  useEffect(() => {
+    previewFractalRef.current = createFractalState();
+  }, [style]);
+
   /**
    * Live preview animation. Independent of the renderer so the user gets
    * instant feedback that audio is actually being captured even when the
@@ -267,6 +278,20 @@ export function VisualizerControls({
               barCount,
               cellRows,
               frequencyLayout,
+              performanceMode,
+            });
+          } else if (style === "fractal") {
+            drawFractal(ctx, frame.samples, frame.freqs, {
+              width,
+              height,
+              lineColor,
+              lineColor2,
+              glowColor,
+              gridColor,
+              lineWidth: lineWidth * ratio,
+              sensitivity,
+              showGrid: false,
+              state: previewFractalRef.current,
               performanceMode,
             });
           } else {
@@ -397,7 +422,9 @@ export function VisualizerControls({
                     ? "Line (top) · Line 2 (bottom) of vertical fill gradient"
                     : style === "pixel-bars"
                       ? "Line (top) · Line 2 (bottom) — gradient interpolated through HSL"
-                      : "Line = waveform · Glow = halo"}
+                      : style === "fractal"
+                        ? "Line = curve hue base (hue cycles) · Glow = halo"
+                        : "Line = waveform · Glow = halo"}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-4">

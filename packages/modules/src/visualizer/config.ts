@@ -15,6 +15,7 @@ export const VISUALIZER_STYLE_OPTIONS = [
   { value: "stacked-waves", label: "Stacked waves" },
   { value: "filled-spectrum", label: "Filled spectrum" },
   { value: "pixel-bars", label: "Pixel bars" },
+  { value: "fractal", label: "Fractal feedback" },
 ] as const;
 
 export type VisualizerStyle =
@@ -78,6 +79,7 @@ export const VisualizerConfigSchema = z.object({
       "stacked-waves",
       "filled-spectrum",
       "pixel-bars",
+      "fractal",
     ])
     .optional(),
 
@@ -94,6 +96,7 @@ export const VisualizerConfigSchema = z.object({
       "stacked-waves": PerStyleSettingsSchema.optional(),
       "filled-spectrum": PerStyleSettingsSchema.optional(),
       "pixel-bars": PerStyleSettingsSchema.optional(),
+      fractal: PerStyleSettingsSchema.optional(),
     })
     .optional(),
 
@@ -284,6 +287,30 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     sensitivity: 1.6,
     showGrid: false,
     barCount: 32,
+    ringCount: DEFAULT_RING_COUNT,
+    ringSpeed: DEFAULT_RING_SPEED,
+    stackCount: DEFAULT_STACK_COUNT,
+    frequencyLayout: "linear",
+    bottomFade: 0,
+    cellRows: DEFAULT_CELL_ROWS,
+  },
+  fractal: {
+    /*
+     * Winamp/MilkDrop-style frame-feedback fractal. `lineColor` anchors
+     * the saturation/lightness of the hue-cycled audio curve; the actual
+     * hue rotates over time (slowly by default, faster on bass hits) so
+     * the visual feels alive. `lineColor2` is unused for now but kept in
+     * the schema for symmetry; `glowColor` drives the soft shadow halo
+     * around the freshly-drawn waveform in non-performance mode.
+     */
+    lineColor: "#e879f9",
+    lineColor2: "#7e22ce",
+    glowColor: "#a855f7",
+    gridColor: "#1e3a47",
+    lineWidth: 2,
+    sensitivity: 1.5,
+    showGrid: false,
+    barCount: DEFAULT_BAR_COUNT,
     ringCount: DEFAULT_RING_COUNT,
     ringSpeed: DEFAULT_RING_SPEED,
     stackCount: DEFAULT_STACK_COUNT,
