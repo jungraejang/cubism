@@ -1,15 +1,15 @@
 import {
-  startAudioCapture,
-  type AudioCaptureSession,
+  startCapture,
+  type CaptureSession,
   type WaveformFrame,
-} from "./audioCapture";
+} from "./capture";
 import type { AudioSource } from "./config";
 
 /**
- * Module-level singleton holding the live audio capture session. Living
- * outside any React component means the underlying MediaStream/AudioContext
- * survive when the AudioControls component unmounts (which happens every
- * time the user switches to a different module).
+ * Module-level singleton holding the live capture session. Living outside
+ * any React component means the underlying MediaStream/AudioContext survive
+ * when the VisualizerControls component unmounts (which happens every time
+ * the user switches to a different module).
  *
  * The Controls component subscribes a "frame sink" on mount and clears it
  * on unmount; the capture pipeline keeps feeding the sink only while one is
@@ -22,7 +22,7 @@ import type { AudioSource } from "./config";
 
 type FrameSink = (frame: WaveformFrame) => void;
 
-let session: AudioCaptureSession | null = null;
+let session: CaptureSession | null = null;
 let activeSource: AudioSource | null = null;
 let sink: FrameSink | null = null;
 let lastFrame: WaveformFrame | null = null;
@@ -50,11 +50,6 @@ export function isCapturing(): boolean {
   return session !== null;
 }
 
-/**
- * Subscribe to session start/stop events. Returns an unsubscribe fn.
- * The listener is invoked synchronously after every state change so React
- * components can update their UI without polling.
- */
 export function subscribeSession(listener: () => void): () => void {
   sessionListeners.add(listener);
   return () => {
@@ -63,8 +58,6 @@ export function subscribeSession(listener: () => void): () => void {
 }
 
 export async function startSession(source: AudioSource): Promise<void> {
-  // Tear down any existing session before starting a new one. We bypass the
-  // listener notification here because the new session below will fire one.
   if (session) {
     const prev = session;
     session = null;
@@ -73,15 +66,13 @@ export async function startSession(source: AudioSource): Promise<void> {
     prev.stop();
   }
 
-  const next = await startAudioCapture(
+  const next = await startCapture(
     source,
     (frame) => {
       lastFrame = frame;
       sink?.(frame);
     },
     () => {
-      // Browser-initiated end (e.g. user stops sharing). Mirror to store
-      // unless this session was already replaced by a newer one.
       if (session === next) {
         session = null;
         activeSource = null;
@@ -102,6 +93,6 @@ export function stopSession(): void {
   session = null;
   activeSource = null;
   lastFrame = null;
-  prev.stop(); // will invoke onEnd, but session is already null so it no-ops
+  prev.stop();
   notifyListeners();
 }

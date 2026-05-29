@@ -1,36 +1,43 @@
-import { WAVEFORM_SAMPLE_COUNT, type AudioSource } from "./config";
+import {
+  FREQUENCY_BIN_COUNT,
+  WAVEFORM_SAMPLE_COUNT,
+  type AudioSource,
+} from "./config";
 
 /**
  * Active audio-capture session. Owns the MediaStream, AudioContext and an
- * AnalyserNode; exposes a `start(onFrame)` callback that fires at the
- * browser's animation cadence with the latest downsampled waveform.
+ * AnalyserNode; exposes a `start(onFrame)` callback that fires at ~60Hz
+ * with both the latest downsampled waveform and the log-spaced frequency
+ * spectrum.
  *
  * The capture pipeline:
  *   getDisplayMedia / getUserMedia
  *     -> MediaStreamSource
- *     -> AnalyserNode (fftSize 2048, byteTimeDomainData = Uint8 [0,255])
+ *     -> AnalyserNode (fftSize 2048)
  *     -> Worker-driven tick (~60 Hz, unthrottled in background tabs)
- *        -> downsample to WAVEFORM_SAMPLE_COUNT
- *        -> onFrame(samples, peak)
+ *        -> downsample to WAVEFORM_SAMPLE_COUNT (time domain)
+ *        -> log-bucket to FREQUENCY_BIN_COUNT (frequency domain)
+ *        -> onFrame({ samples, freqs, peak })
  *
- * We deliberately drive the loop from a dedicated Web Worker rather than
- * `requestAnimationFrame`, because rAF is paused (or throttled to ~1 Hz)
- * in background tabs. The user expects the renderer to keep displaying
- * waveforms even when the desktop control panel isn't the active tab, so
- * we need a timer source that the browser doesn't throttle. Worker
- * `setInterval` keeps firing while the tab is hidden.
+ * The loop runs from a Web Worker timer (not requestAnimationFrame) so the
+ * renderer keeps receiving frames even while the desktop control panel is
+ * in a background tab.
  *
- * The downsample step picks max-deviation samples per bucket so transients
- * aren't averaged away on quiet music.
+ * Downsample notes:
+ *  - Time-domain bins use "max deviation" so transients aren't averaged away.
+ *  - Frequency-domain bins use log spacing so the radial visualizer has a
+ *    perceptually-flat distribution across the audible range.
  */
-export type AudioCaptureSession = {
+export type CaptureSession = {
   stop: () => void;
   source: AudioSource;
 };
 
 export type WaveformFrame = {
-  /** Uint8 samples; 128 is silence, 0/255 are extremes. */
+  /** Time-domain Uint8 samples; 128 is silence, 0/255 are extremes. */
   samples: Uint8Array;
+  /** Frequency-domain Uint8 magnitudes (log-spaced, 0 = silent, 255 = peak). */
+  freqs: Uint8Array;
   /** Largest absolute deviation from 128 in this frame, normalized to [0,1]. */
   peak: number;
 };
@@ -44,11 +51,11 @@ export type WaveformFrame = {
  * underlying audio track (user clicked "stop sharing" in the pill, closed
  * the source tab, etc.). Useful for keeping external state in sync.
  */
-export async function startAudioCapture(
+export async function startCapture(
   source: AudioSource,
   onFrame: (frame: WaveformFrame) => void,
   onEnd?: () => void,
-): Promise<AudioCaptureSession> {
+): Promise<CaptureSession> {
   const stream = await acquireStream(source);
 
   // Some browsers fire `getDisplayMedia` and return without an audio track if
@@ -57,7 +64,7 @@ export async function startAudioCapture(
     stream.getTracks().forEach((t) => t.stop());
     throw new Error(
       source === "display"
-        ? "No audio in the captured stream — re-share and tick \"Share audio\"."
+        ? 'No audio in the captured stream — re-share and tick "Share audio".'
         : "Microphone permission granted but no audio track was returned.",
     );
   }
@@ -75,7 +82,6 @@ export async function startAudioCapture(
   }
 
   const ctx = new AudioCtor();
-  // Resume in case of autoplay-policy suspended state.
   if (ctx.state === "suspended") {
     await ctx.resume().catch(() => undefined);
   }
@@ -83,52 +89,82 @@ export async function startAudioCapture(
   const src = ctx.createMediaStreamSource(stream);
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 2048;
-  analyser.smoothingTimeConstant = 0; // raw oscilloscope, no smoothing
+  // Light smoothing for the radial spectrum so bar heights aren't jittery.
+  // The oscilloscope cares about raw shape, but with 0 smoothing the bars
+  // look like noise. 0.6 is a good compromise that keeps transients but
+  // damps frame-to-frame flicker.
+  analyser.smoothingTimeConstant = 0.6;
   src.connect(analyser);
   // We deliberately do NOT connect to ctx.destination — playing audio back
   // would cause feedback when source is mic, and double-playback for tab.
 
-  const raw = new Uint8Array(analyser.fftSize);
-  const downsampled = new Uint8Array(WAVEFORM_SAMPLE_COUNT);
-  const bucketSize = analyser.fftSize / WAVEFORM_SAMPLE_COUNT;
+  const rawTime = new Uint8Array(analyser.fftSize);
+  const rawFreq = new Uint8Array(analyser.frequencyBinCount);
+  const downsampledTime = new Uint8Array(WAVEFORM_SAMPLE_COUNT);
+  const downsampledFreq = new Uint8Array(FREQUENCY_BIN_COUNT);
+  const timeBucket = analyser.fftSize / WAVEFORM_SAMPLE_COUNT;
+
+  /*
+   * Precompute log-spaced frequency-bin ranges. With fftSize=2048 we get
+   * 1024 bins covering 0 .. sampleRate/2 Hz (linearly). Mapping bar i to
+   * roundtrip-log of bin index gives perceptually-uniform spacing.
+   */
+  const minBin = 1; // skip DC
+  const maxBin = analyser.frequencyBinCount - 1;
+  const freqRanges: Array<[number, number]> = [];
+  for (let i = 0; i < FREQUENCY_BIN_COUNT; i++) {
+    const t1 = i / FREQUENCY_BIN_COUNT;
+    const t2 = (i + 1) / FREQUENCY_BIN_COUNT;
+    const lo = minBin * Math.pow(maxBin / minBin, t1);
+    const hi = minBin * Math.pow(maxBin / minBin, t2);
+    freqRanges.push([Math.floor(lo), Math.max(Math.floor(lo) + 1, Math.ceil(hi))]);
+  }
 
   let stopped = false;
 
   function tick() {
     if (stopped) return;
-    analyser.getByteTimeDomainData(raw);
 
-    /*
-     * Downsample by picking the sample with the largest deviation from the
-     * 128 midpoint in each bucket. Average would dampen real waveform shape.
-     */
+    // --- Time domain (oscilloscope) ----------------------------------
+    analyser.getByteTimeDomainData(rawTime);
     let peak = 0;
     for (let i = 0; i < WAVEFORM_SAMPLE_COUNT; i++) {
-      const start = Math.floor(i * bucketSize);
-      const end = Math.floor((i + 1) * bucketSize);
+      const start = Math.floor(i * timeBucket);
+      const end = Math.floor((i + 1) * timeBucket);
       let best = 128;
       let bestDeviation = 0;
       for (let j = start; j < end; j++) {
-        const dev = Math.abs(raw[j] - 128);
+        const dev = Math.abs(rawTime[j] - 128);
         if (dev > bestDeviation) {
           bestDeviation = dev;
-          best = raw[j];
+          best = rawTime[j];
         }
       }
-      downsampled[i] = best;
+      downsampledTime[i] = best;
       if (bestDeviation > peak) peak = bestDeviation;
     }
 
-    // Copy so the consumer is free to retain the buffer.
-    const out = new Uint8Array(downsampled);
-    onFrame({ samples: out, peak: peak / 128 });
+    // --- Frequency domain (radial-spectrum) --------------------------
+    analyser.getByteFrequencyData(rawFreq);
+    for (let i = 0; i < FREQUENCY_BIN_COUNT; i++) {
+      const [lo, hi] = freqRanges[i];
+      let sum = 0;
+      let count = 0;
+      for (let j = lo; j < hi && j < rawFreq.length; j++) {
+        sum += rawFreq[j];
+        count++;
+      }
+      downsampledFreq[i] = count > 0 ? Math.floor(sum / count) : 0;
+    }
+
+    // Copy so the consumer is free to retain the buffers.
+    onFrame({
+      samples: new Uint8Array(downsampledTime),
+      freqs: new Uint8Array(downsampledFreq),
+      peak: peak / 128,
+    });
   }
 
-  /*
-   * Background-tab-safe ticker. The worker's setInterval keeps firing at
-   * the requested rate regardless of whether the page is the foreground
-   * tab. ~16 ms target ≈ 60 Hz.
-   */
   const ticker = createBackgroundTicker(16, tick);
 
   function stop() {
@@ -145,10 +181,6 @@ export async function startAudioCapture(
     onEnd?.();
   }
 
-  /*
-   * If the user revokes capture from the browser's "sharing" pill, the audio
-   * tracks fire `ended`. Auto-clean up so we don't keep spinning the RAF.
-   */
   stream.getAudioTracks().forEach((track) => {
     track.addEventListener("ended", () => stop());
   });
@@ -199,7 +231,6 @@ function createBackgroundTicker(
     blobUrl = URL.createObjectURL(blob);
     worker = new Worker(blobUrl);
   } catch {
-    // CSP can block blob: workers in some environments. Fall back.
     const id = window.setInterval(onTick, intervalMs);
     return { stop: () => window.clearInterval(id) };
   }
@@ -227,8 +258,8 @@ async function acquireStream(source: AudioSource): Promise<MediaStream> {
         "Display capture is not supported in this browser. Try Microphone.",
       );
     }
-    // Chrome requires a video track to be requested alongside audio; we
-    // immediately stop the video track since we don't need it.
+    // Chrome requires a video track alongside audio; we immediately stop
+    // the video track since we don't need it.
     const stream = await navigator.mediaDevices.getDisplayMedia({
       audio: { channelCount: 2 },
       video: true,

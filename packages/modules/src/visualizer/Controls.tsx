@@ -6,17 +6,21 @@ import { ROTATION_OPTIONS } from "../_lib/orientation";
 import type { ControlsProps } from "../types";
 import {
   AUDIO_SOURCE_OPTIONS,
+  DEFAULT_BAR_COUNT,
   DEFAULT_GLOW_COLOR,
   DEFAULT_GRID_COLOR,
   DEFAULT_LINE_COLOR,
   DEFAULT_LINE_WIDTH,
   DEFAULT_SENSITIVITY,
-  type AudioModuleConfig,
+  DEFAULT_STYLE,
+  VISUALIZER_STYLE_OPTIONS,
   type AudioSource,
-  type AudioStreamFrame,
+  type VisualizerModuleConfig,
+  type VisualizerStreamFrame,
 } from "./config";
-import type { WaveformFrame } from "./audioCapture";
+import type { WaveformFrame } from "./capture";
 import { drawWaveform } from "./drawWaveform";
+import { drawRadialSpectrum } from "./drawRadialSpectrum";
 import {
   getActiveSource,
   getLastFrame,
@@ -27,11 +31,11 @@ import {
   subscribeSession,
 } from "./sessionStore";
 
-export function AudioControls({
+export function VisualizerControls({
   config,
   onChange,
   stream,
-}: ControlsProps<AudioModuleConfig>) {
+}: ControlsProps<VisualizerModuleConfig>) {
   /**
    * Subscribes to the module-level session store. The store survives across
    * Controls mount/unmount cycles, so the capture session (and its
@@ -54,16 +58,18 @@ export function AudioControls({
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastFrameRef = useRef<WaveformFrame | null>(getLastFrame());
 
-  function patch(next: Partial<AudioModuleConfig>) {
+  function patch(next: Partial<VisualizerModuleConfig>) {
     onChange({ ...config, ...next });
   }
 
+  const style = config.style ?? DEFAULT_STYLE;
   const lineColor = config.lineColor ?? DEFAULT_LINE_COLOR;
   const glowColor = config.glowColor ?? DEFAULT_GLOW_COLOR;
   const gridColor = config.gridColor ?? DEFAULT_GRID_COLOR;
   const lineWidth = config.lineWidth ?? DEFAULT_LINE_WIDTH;
   const sensitivity = config.sensitivity ?? DEFAULT_SENSITIVITY;
   const showGrid = config.showGrid ?? true;
+  const barCount = config.barCount ?? DEFAULT_BAR_COUNT;
   const rotation = config.rotation ?? 0;
 
   /**
@@ -76,8 +82,9 @@ export function AudioControls({
   useEffect(() => {
     setFrameSink((frame) => {
       lastFrameRef.current = frame;
-      const frameForWire: AudioStreamFrame = {
+      const frameForWire: VisualizerStreamFrame = {
         samples: frame.samples,
+        freqs: frame.freqs,
         peak: frame.peak,
         sentAt: Date.now(),
       };
@@ -118,7 +125,8 @@ export function AudioControls({
   /**
    * Live preview animation. Independent of the renderer so the user gets
    * instant feedback that audio is actually being captured even when the
-   * Pi is offline.
+   * Pi is offline. Style-aware so what you see locally is what shows on
+   * the hologram.
    */
   useEffect(() => {
     let raf = 0;
@@ -135,30 +143,41 @@ export function AudioControls({
             canvas.width = width;
             canvas.height = height;
           }
-          drawWaveform(ctx, frame.samples, {
-            width,
-            height,
-            lineColor,
-            glowColor,
-            gridColor,
-            lineWidth: lineWidth * ratio,
-            sensitivity,
-            showGrid: false,
-          });
+          if (style === "radial-spectrum") {
+            drawRadialSpectrum(ctx, frame.freqs, {
+              width,
+              height,
+              lineColor,
+              glowColor,
+              gridColor,
+              lineWidth: lineWidth * ratio,
+              sensitivity,
+              showGrid: false,
+            });
+          } else {
+            drawWaveform(ctx, frame.samples, {
+              width,
+              height,
+              lineColor,
+              glowColor,
+              gridColor,
+              lineWidth: lineWidth * ratio,
+              sensitivity,
+              showGrid: false,
+            });
+          }
         }
       }
       raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [lineColor, glowColor, gridColor, lineWidth, sensitivity]);
+  }, [style, lineColor, glowColor, gridColor, lineWidth, sensitivity]);
 
   return (
     <div className="flex flex-col gap-5">
       <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
-        <h3 className="text-sm font-semibold text-zinc-200">
-          Audio Capture
-        </h3>
+        <h3 className="text-sm font-semibold text-zinc-200">Audio Capture</h3>
         <p className="mt-1 text-xs text-zinc-500">
           Choose a source. For <em>System / Tab audio</em>, your browser will
           ask you to share a screen, window, or tab — tick{" "}
@@ -205,19 +224,42 @@ export function AudioControls({
         ) : null}
 
         <div
-          className="mt-4 h-24 rounded-lg border border-zinc-800 bg-black"
-          aria-label="Live waveform preview"
+          className="mt-4 h-32 rounded-lg border border-zinc-800 bg-black"
+          aria-label="Live preview"
         >
-          <canvas
-            ref={previewCanvasRef}
-            className="h-full w-full"
-          />
+          <canvas ref={previewCanvasRef} className="h-full w-full" />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-zinc-400">Style</span>
+        <div className="flex flex-wrap gap-2">
+          {VISUALIZER_STYLE_OPTIONS.map((option) => (
+            <motion.button
+              key={option.value}
+              type="button"
+              whileTap={{ scale: 0.95 }}
+              onClick={() => patch({ style: option.value })}
+              className={`rounded-lg px-3 py-2 text-sm ${
+                style === option.value
+                  ? "bg-cyan-400 text-zinc-950"
+                  : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+              }`}
+            >
+              {option.label}
+            </motion.button>
+          ))}
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-3">
           <span className="w-32 text-zinc-400">Colors</span>
+          <span className="text-xs text-zinc-500">
+            {style === "radial-spectrum"
+              ? "Line = bar base · Glow = bar tip"
+              : "Line = waveform · Glow = halo"}
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-sm text-zinc-300">
@@ -256,7 +298,9 @@ export function AudioControls({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1">
           <span className="flex justify-between text-zinc-400">
-            <span>Line width</span>
+            <span>
+              {style === "radial-spectrum" ? "Bar thickness" : "Line width"}
+            </span>
             <span className="font-mono text-zinc-500">{lineWidth}px</span>
           </span>
           <input
@@ -274,7 +318,9 @@ export function AudioControls({
         <label className="flex flex-col gap-1">
           <span className="flex justify-between text-zinc-400">
             <span>Sensitivity</span>
-            <span className="font-mono text-zinc-500">{sensitivity.toFixed(1)}×</span>
+            <span className="font-mono text-zinc-500">
+              {sensitivity.toFixed(1)}×
+            </span>
           </span>
           <input
             type="range"
@@ -288,6 +334,25 @@ export function AudioControls({
             className="accent-cyan-400"
           />
         </label>
+        {style === "radial-spectrum" ? (
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="flex justify-between text-zinc-400">
+              <span>Bar count</span>
+              <span className="font-mono text-zinc-500">{barCount}</span>
+            </span>
+            <input
+              type="range"
+              min={24}
+              max={192}
+              step={4}
+              value={barCount}
+              onChange={(event) =>
+                patch({ barCount: Number(event.target.value) })
+              }
+              className="accent-cyan-400"
+            />
+          </label>
+        ) : null}
       </div>
 
       <label className="flex items-center gap-2 text-sm">
@@ -296,7 +361,9 @@ export function AudioControls({
           checked={showGrid}
           onChange={(event) => patch({ showGrid: event.target.checked })}
         />
-        <span>Show grid lines</span>
+        <span>
+          {style === "radial-spectrum" ? "Show inner outline" : "Show grid lines"}
+        </span>
       </label>
 
       <div className="flex flex-col gap-2">

@@ -3,7 +3,7 @@ import { clockModule } from "./clock";
 import { textModule } from "./text";
 import { weatherModule } from "./weather";
 import { spotifyModule } from "./spotify";
-import { audioModule } from "./audio";
+import { visualizerModule } from "./visualizer";
 
 /**
  * The single source of truth for all registered modules. Adding a new module
@@ -16,7 +16,7 @@ export const modules: readonly AnyCubismModule[] = [
   textModule,
   weatherModule,
   spotifyModule,
-  audioModule,
+  visualizerModule,
 ];
 
 export * from "./types";
