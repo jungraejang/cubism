@@ -11,6 +11,7 @@ export type AudioSource = (typeof AUDIO_SOURCE_OPTIONS)[number]["value"];
 export const VISUALIZER_STYLE_OPTIONS = [
   { value: "oscilloscope", label: "Oscilloscope" },
   { value: "radial-spectrum", label: "Radial spectrum" },
+  { value: "concentric-rings", label: "Concentric rings" },
 ] as const;
 
 export type VisualizerStyle =
@@ -18,7 +19,9 @@ export type VisualizerStyle =
 
 export const VisualizerConfigSchema = z.object({
   /** Which drawing routine to use on the renderer. */
-  style: z.enum(["oscilloscope", "radial-spectrum"]).optional(),
+  style: z
+    .enum(["oscilloscope", "radial-spectrum", "concentric-rings"])
+    .optional(),
   /**
    * Primary accent color. Per style:
    *  - oscilloscope: the waveform line itself.
@@ -42,6 +45,13 @@ export const VisualizerConfigSchema = z.object({
   showGrid: z.boolean().optional(),
   /** Number of spokes for the radial-spectrum style. */
   barCount: z.number().int().min(24).max(192).optional(),
+  /** Maximum number of trailing rings kept alive at once (concentric-rings). */
+  ringCount: z.number().int().min(2).max(24).optional(),
+  /**
+   * How many CSS pixels each ring expands outward per drawn frame
+   * (concentric-rings). Higher = ripples move outward faster.
+   */
+  ringSpeed: z.number().min(1).max(20).optional(),
   /**
    * Disable the soft glow pass and the per-bar gradient, and throttle the
    * draw loop to ~30fps. Massive win on Pi-class hardware where the canvas
@@ -63,6 +73,8 @@ export const DEFAULT_GRID_COLOR = "#1e3a47";
 export const DEFAULT_LINE_WIDTH = 3;
 export const DEFAULT_SENSITIVITY = 1.5;
 export const DEFAULT_BAR_COUNT = 96;
+export const DEFAULT_RING_COUNT = 8;
+export const DEFAULT_RING_SPEED = 6;
 export const DEFAULT_PERFORMANCE_MODE = true;
 
 /**

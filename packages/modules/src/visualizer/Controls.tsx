@@ -12,6 +12,8 @@ import {
   DEFAULT_LINE_COLOR,
   DEFAULT_LINE_WIDTH,
   DEFAULT_PERFORMANCE_MODE,
+  DEFAULT_RING_COUNT,
+  DEFAULT_RING_SPEED,
   DEFAULT_SENSITIVITY,
   DEFAULT_STYLE,
   VISUALIZER_STYLE_OPTIONS,
@@ -22,6 +24,10 @@ import {
 import type { WaveformFrame } from "./capture";
 import { drawWaveform } from "./drawWaveform";
 import { drawRadialSpectrum } from "./drawRadialSpectrum";
+import {
+  tickAndDrawConcentricRings,
+  type Ring,
+} from "./drawConcentricRings";
 import {
   getActiveSource,
   getLastFrame,
@@ -71,6 +77,8 @@ export function VisualizerControls({
   const sensitivity = config.sensitivity ?? DEFAULT_SENSITIVITY;
   const showGrid = config.showGrid ?? true;
   const barCount = config.barCount ?? DEFAULT_BAR_COUNT;
+  const ringCount = config.ringCount ?? DEFAULT_RING_COUNT;
+  const ringSpeed = config.ringSpeed ?? DEFAULT_RING_SPEED;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const rotation = config.rotation ?? 0;
 
@@ -125,6 +133,15 @@ export function VisualizerControls({
   }
 
   /**
+   * Preview-local ring history for the concentric-rings style. Reset when
+   * the style changes so we don't carry stale rings from a previous mode.
+   */
+  const previewRingsRef = useRef<Ring[]>([]);
+  useEffect(() => {
+    previewRingsRef.current = [];
+  }, [style]);
+
+  /**
    * Live preview animation. Independent of the renderer so the user gets
    * instant feedback that audio is actually being captured even when the
    * Pi is offline. Style-aware so what you see locally is what shows on
@@ -157,6 +174,22 @@ export function VisualizerControls({
               showGrid: false,
               performanceMode,
             });
+          } else if (style === "concentric-rings") {
+            tickAndDrawConcentricRings(ctx, frame.freqs, {
+              width,
+              height,
+              lineColor,
+              glowColor,
+              gridColor,
+              lineWidth: lineWidth * ratio,
+              sensitivity,
+              showGrid: false,
+              rings: previewRingsRef.current,
+              maxRings: ringCount,
+              expansionPerFrame: ringSpeed * ratio,
+              advance: true,
+              performanceMode,
+            });
           } else {
             drawWaveform(ctx, frame.samples, {
               width,
@@ -175,7 +208,17 @@ export function VisualizerControls({
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [style, lineColor, glowColor, gridColor, lineWidth, sensitivity, performanceMode]);
+  }, [
+    style,
+    lineColor,
+    glowColor,
+    gridColor,
+    lineWidth,
+    sensitivity,
+    performanceMode,
+    ringCount,
+    ringSpeed,
+  ]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -261,7 +304,9 @@ export function VisualizerControls({
           <span className="text-xs text-zinc-500">
             {style === "radial-spectrum"
               ? "Line = bar base · Glow = bar tip"
-              : "Line = waveform · Glow = halo"}
+              : style === "concentric-rings"
+                ? "Line = newest ring · Glow = oldest ring"
+                : "Line = waveform · Glow = halo"}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-4">
@@ -302,7 +347,11 @@ export function VisualizerControls({
         <label className="flex flex-col gap-1">
           <span className="flex justify-between text-zinc-400">
             <span>
-              {style === "radial-spectrum" ? "Bar thickness" : "Line width"}
+              {style === "radial-spectrum"
+                ? "Bar thickness"
+                : style === "concentric-rings"
+                  ? "Ring thickness"
+                  : "Line width"}
             </span>
             <span className="font-mono text-zinc-500">{lineWidth}px</span>
           </span>
@@ -356,6 +405,44 @@ export function VisualizerControls({
             />
           </label>
         ) : null}
+        {style === "concentric-rings" ? (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="flex justify-between text-zinc-400">
+                <span>Ring count</span>
+                <span className="font-mono text-zinc-500">{ringCount}</span>
+              </span>
+              <input
+                type="range"
+                min={2}
+                max={24}
+                step={1}
+                value={ringCount}
+                onChange={(event) =>
+                  patch({ ringCount: Number(event.target.value) })
+                }
+                className="accent-cyan-400"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="flex justify-between text-zinc-400">
+                <span>Ripple speed</span>
+                <span className="font-mono text-zinc-500">{ringSpeed}px/f</span>
+              </span>
+              <input
+                type="range"
+                min={1}
+                max={20}
+                step={1}
+                value={ringSpeed}
+                onChange={(event) =>
+                  patch({ ringSpeed: Number(event.target.value) })
+                }
+                className="accent-cyan-400"
+              />
+            </label>
+          </>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -366,7 +453,9 @@ export function VisualizerControls({
             onChange={(event) => patch({ showGrid: event.target.checked })}
           />
           <span>
-            {style === "radial-spectrum" ? "Show inner outline" : "Show grid lines"}
+            {style === "radial-spectrum" || style === "concentric-rings"
+              ? "Show inner outline"
+              : "Show grid lines"}
           </span>
         </label>
         <label className="flex items-center gap-2 text-sm">

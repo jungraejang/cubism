@@ -15,6 +15,8 @@ import {
   DEFAULT_LINE_COLOR,
   DEFAULT_LINE_WIDTH,
   DEFAULT_PERFORMANCE_MODE,
+  DEFAULT_RING_COUNT,
+  DEFAULT_RING_SPEED,
   DEFAULT_SENSITIVITY,
   DEFAULT_STYLE,
   FREQUENCY_BIN_COUNT,
@@ -24,6 +26,10 @@ import {
 } from "./config";
 import { drawWaveform } from "./drawWaveform";
 import { drawRadialSpectrum } from "./drawRadialSpectrum";
+import {
+  tickAndDrawConcentricRings,
+  type Ring,
+} from "./drawConcentricRings";
 
 /**
  * Maximum age, in milliseconds, that a received frame is considered "live".
@@ -52,6 +58,8 @@ export function VisualizerRenderer({
   const sensitivity = config.sensitivity ?? DEFAULT_SENSITIVITY;
   const showGrid = config.showGrid ?? true;
   const barCount = config.barCount ?? DEFAULT_BAR_COUNT;
+  const ringCount = config.ringCount ?? DEFAULT_RING_COUNT;
+  const ringSpeed = config.ringSpeed ?? DEFAULT_RING_SPEED;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const { rotate, scaleX, scaleY } = orientationTransform(config);
 
@@ -85,6 +93,17 @@ export function VisualizerRenderer({
    * visualization stutter. When no frame is available (or it's stale), we
    * render a blank field.
    */
+  /*
+   * Persistent ring-history buffer for the concentric-rings style. Lives
+   * in a ref so it survives re-renders and accumulates across frames.
+   * Reset when the style changes so a stale ring trail doesn't bleed into
+   * the new visualization.
+   */
+  const ringsRef = useRef<Ring[]>([]);
+  useEffect(() => {
+    ringsRef.current = [];
+  }, [style]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -145,6 +164,22 @@ export function VisualizerRenderer({
           showGrid,
           performanceMode,
         });
+      } else if (style === "concentric-rings") {
+        tickAndDrawConcentricRings(ctx, freqs, {
+          width,
+          height,
+          lineColor,
+          glowColor,
+          gridColor,
+          lineWidth: lineWidth * ratio,
+          sensitivity,
+          showGrid,
+          rings: ringsRef.current,
+          maxRings: ringCount,
+          expansionPerFrame: ringSpeed * ratio,
+          advance: fresh === true,
+          performanceMode,
+        });
       } else {
         drawWaveform(ctx, samples, {
           width,
@@ -171,6 +206,8 @@ export function VisualizerRenderer({
     sensitivity,
     showGrid,
     barCount,
+    ringCount,
+    ringSpeed,
     performanceMode,
   ]);
 
@@ -194,7 +231,7 @@ export function VisualizerRenderer({
           <canvas
             ref={canvasRef}
             className={
-              style === "radial-spectrum"
+              style === "radial-spectrum" || style === "concentric-rings"
                 ? "h-[90vh] w-[90vh] max-w-[90vw]"
                 : "h-[80vh] w-[90vw]"
             }
