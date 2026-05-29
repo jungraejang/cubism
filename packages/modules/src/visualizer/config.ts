@@ -42,6 +42,13 @@ export const VisualizerConfigSchema = z.object({
   showGrid: z.boolean().optional(),
   /** Number of spokes for the radial-spectrum style. */
   barCount: z.number().int().min(24).max(192).optional(),
+  /**
+   * Disable the soft glow pass and the per-bar gradient, and throttle the
+   * draw loop to ~30fps. Massive win on Pi-class hardware where the canvas
+   * `shadowBlur` operation is software-rasterized. Defaults to `true` since
+   * the renderer normally runs on a Pi.
+   */
+  performanceMode: z.boolean().optional(),
   /** Preferred source. Persisted across sessions; user must still re-grant. */
   preferredSource: z.enum(["display", "microphone"]).optional(),
   ...OrientationFields,
@@ -56,6 +63,7 @@ export const DEFAULT_GRID_COLOR = "#1e3a47";
 export const DEFAULT_LINE_WIDTH = 3;
 export const DEFAULT_SENSITIVITY = 1.5;
 export const DEFAULT_BAR_COUNT = 96;
+export const DEFAULT_PERFORMANCE_MODE = true;
 
 /**
  * Wire shape for one visualizer frame.

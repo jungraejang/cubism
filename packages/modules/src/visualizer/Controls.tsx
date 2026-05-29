@@ -11,6 +11,7 @@ import {
   DEFAULT_GRID_COLOR,
   DEFAULT_LINE_COLOR,
   DEFAULT_LINE_WIDTH,
+  DEFAULT_PERFORMANCE_MODE,
   DEFAULT_SENSITIVITY,
   DEFAULT_STYLE,
   VISUALIZER_STYLE_OPTIONS,
@@ -70,6 +71,7 @@ export function VisualizerControls({
   const sensitivity = config.sensitivity ?? DEFAULT_SENSITIVITY;
   const showGrid = config.showGrid ?? true;
   const barCount = config.barCount ?? DEFAULT_BAR_COUNT;
+  const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const rotation = config.rotation ?? 0;
 
   /**
@@ -153,6 +155,7 @@ export function VisualizerControls({
               lineWidth: lineWidth * ratio,
               sensitivity,
               showGrid: false,
+              performanceMode,
             });
           } else {
             drawWaveform(ctx, frame.samples, {
@@ -172,7 +175,7 @@ export function VisualizerControls({
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [style, lineColor, glowColor, gridColor, lineWidth, sensitivity]);
+  }, [style, lineColor, glowColor, gridColor, lineWidth, sensitivity, performanceMode]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -355,16 +358,33 @@ export function VisualizerControls({
         ) : null}
       </div>
 
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={showGrid}
-          onChange={(event) => patch({ showGrid: event.target.checked })}
-        />
-        <span>
-          {style === "radial-spectrum" ? "Show inner outline" : "Show grid lines"}
-        </span>
-      </label>
+      <div className="flex flex-col gap-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={showGrid}
+            onChange={(event) => patch({ showGrid: event.target.checked })}
+          />
+          <span>
+            {style === "radial-spectrum" ? "Show inner outline" : "Show grid lines"}
+          </span>
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={performanceMode}
+            onChange={(event) =>
+              patch({ performanceMode: event.target.checked })
+            }
+          />
+          <span>
+            Performance mode{" "}
+            <span className="text-xs text-zinc-500">
+              (recommended for Raspberry Pi — disables glow + caps to 30fps)
+            </span>
+          </span>
+        </label>
+      </div>
 
       <div className="flex flex-col gap-2">
         <span className="text-zinc-400">Orientation</span>

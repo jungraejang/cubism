@@ -14,6 +14,7 @@ import {
   DEFAULT_GRID_COLOR,
   DEFAULT_LINE_COLOR,
   DEFAULT_LINE_WIDTH,
+  DEFAULT_PERFORMANCE_MODE,
   DEFAULT_SENSITIVITY,
   DEFAULT_STYLE,
   FREQUENCY_BIN_COUNT,
@@ -51,6 +52,7 @@ export function VisualizerRenderer({
   const sensitivity = config.sensitivity ?? DEFAULT_SENSITIVITY;
   const showGrid = config.showGrid ?? true;
   const barCount = config.barCount ?? DEFAULT_BAR_COUNT;
+  const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const { rotate, scaleX, scaleY } = orientationTransform(config);
 
   useEffect(() => {
@@ -91,11 +93,32 @@ export function VisualizerRenderer({
 
     const flatSamples = new Uint8Array(WAVEFORM_SAMPLE_COUNT).fill(128);
     const flatFreqs = new Uint8Array(FREQUENCY_BIN_COUNT);
+    /*
+     * On Pi 4 the canvas is software-rasterized; rendering at devicePixelRatio
+     * > 1 doubles every pixel the CPU has to touch. Cap it at 1 in
+     * performance mode — visually the bars look identical on a 1080p HDMI
+     * panel and the per-frame cost roughly quarters.
+     */
+    const maxRatio = performanceMode ? 1 : window.devicePixelRatio || 1;
+    /*
+     * In performance mode throttle the draw loop to ~30fps. Audio data
+     * still arrives at the original cadence; we just skip frames we don't
+     * have CPU budget to render.
+     */
+    const minFrameInterval = performanceMode ? 33 : 0;
+    let lastDrawAt = 0;
     let raf = 0;
 
     function tick() {
       if (!canvas || !ctx) return;
-      const ratio = window.devicePixelRatio || 1;
+      const now = performance.now();
+      if (now - lastDrawAt < minFrameInterval) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      lastDrawAt = now;
+
+      const ratio = Math.min(window.devicePixelRatio || 1, maxRatio);
       const width = canvas.clientWidth * ratio;
       const height = canvas.clientHeight * ratio;
       if (canvas.width !== width || canvas.height !== height) {
@@ -110,10 +133,6 @@ export function VisualizerRenderer({
       const freqs = fresh ? frameRef.current!.freqs : flatFreqs;
 
       if (style === "radial-spectrum") {
-        /*
-         * Sub-bucket the received freqs into `barCount` bars, so the user
-         * can dial in fewer/more spokes at runtime without re-capturing.
-         */
         const bars = resampleBars(freqs, barCount);
         drawRadialSpectrum(ctx, bars, {
           width,
@@ -124,6 +143,7 @@ export function VisualizerRenderer({
           lineWidth: lineWidth * ratio,
           sensitivity,
           showGrid,
+          performanceMode,
         });
       } else {
         drawWaveform(ctx, samples, {
@@ -151,6 +171,7 @@ export function VisualizerRenderer({
     sensitivity,
     showGrid,
     barCount,
+    performanceMode,
   ]);
 
   const hasRecentFrame =

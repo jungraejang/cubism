@@ -1,18 +1,23 @@
 /**
  * Shared canvas drawing routine for the radial-spectrum visualizer.
  * Bars are arranged around a circle, length proportional to each
- * (log-spaced) frequency bucket's magnitude. The bar color gradient runs
- * from `lineColor` at the inner base to `glowColor` at the outer tip.
+ * (log-spaced) frequency bucket's magnitude.
  *
- * The drawer is style-agnostic about its caller — same function used by
- * the desktop preview canvas and the Pi renderer.
+ * Two fidelity tiers:
+ *  - high  (performanceMode=false): per-bar linear gradient + soft outer
+ *    glow pass driven by canvas shadowBlur. Looks great on desktop GPUs.
+ *  - low   (performanceMode=true):  single pass, solid bar color, no shadow.
+ *    Roughly an order of magnitude cheaper on Pi 4's software-rasterized
+ *    Chromium where shadowBlur dominates per-frame cost.
+ *
+ * Same function used by the desktop preview canvas and the Pi renderer.
  */
 export type DrawRadialSpectrumOptions = {
   width: number;
   height: number;
-  /** Color at the inner base of each spoke. */
+  /** Color at the inner base of each spoke (also the solid color in perf mode). */
   lineColor: string;
-  /** Color at the outer tip of each spoke (creates a gradient with lineColor). */
+  /** Color at the outer tip of each spoke. Ignored in perf mode. */
   glowColor: string;
   /** Color of the optional inner-radius outline circle. */
   gridColor: string;
@@ -22,7 +27,29 @@ export type DrawRadialSpectrumOptions = {
   sensitivity: number;
   /** Whether to draw the inner-radius outline. */
   showGrid: boolean;
+  /** Pi-friendly low-fidelity path. */
+  performanceMode?: boolean;
 };
+
+/*
+ * Sin/cos lookup table keyed by barCount. Angles don't change between
+ * frames so trig only needs to run once per (barCount, code-reload). On a
+ * Pi this saves ~150 Math.cos + Math.sin calls per frame (with barCount=64
+ * × 2 endpoints). Negligible alone, but every microsecond counts here.
+ */
+const angleCache = new Map<number, Float32Array>();
+function getAngleTable(barCount: number): Float32Array {
+  const existing = angleCache.get(barCount);
+  if (existing) return existing;
+  const out = new Float32Array(barCount * 2); // [cos0, sin0, cos1, sin1, ...]
+  for (let i = 0; i < barCount; i++) {
+    const angle = (i / barCount) * Math.PI * 2 - Math.PI / 2;
+    out[i * 2] = Math.cos(angle);
+    out[i * 2 + 1] = Math.sin(angle);
+  }
+  angleCache.set(barCount, out);
+  return out;
+}
 
 export function drawRadialSpectrum(
   ctx: CanvasRenderingContext2D,
@@ -38,6 +65,7 @@ export function drawRadialSpectrum(
     lineWidth,
     sensitivity,
     showGrid,
+    performanceMode = false,
   } = opts;
 
   ctx.clearRect(0, 0, width, height);
@@ -50,10 +78,6 @@ export function drawRadialSpectrum(
   const maxBarLength = minDim * 0.24;
   const barCount = freqs.length;
 
-  /*
-   * Keep bars from overlapping each other when the user picks a high bar
-   * count. We allow at most ~80% of the available arc width per bar.
-   */
   const circumference = 2 * Math.PI * innerRadius;
   const maxBarWidth = (circumference / barCount) * 0.8;
   const barWidth = Math.max(1, Math.min(lineWidth, maxBarWidth));
@@ -69,13 +93,44 @@ export function drawRadialSpectrum(
     ctx.restore();
   }
 
+  const angles = getAngleTable(barCount);
+
   ctx.save();
   ctx.lineCap = "butt";
 
+  if (performanceMode) {
+    /*
+     * Fast path: one stroke per bar, solid color, no shadow, no gradient.
+     * Coalesces every spoke into a single Path2D so the rasterizer only
+     * has to traverse the path tree once instead of per-bar.
+     */
+    const path = new Path2D();
+    for (let i = 0; i < barCount; i++) {
+      const magnitude = (freqs[i] / 255) * sensitivity;
+      const barLength = Math.min(maxBarLength, magnitude * maxBarLength);
+      if (barLength < 1) continue;
+      const cos = angles[i * 2];
+      const sin = angles[i * 2 + 1];
+      const x1 = cx + innerRadius * cos;
+      const y1 = cy + innerRadius * sin;
+      const x2 = cx + (innerRadius + barLength) * cos;
+      const y2 = cy + (innerRadius + barLength) * sin;
+      path.moveTo(x1, y1);
+      path.lineTo(x2, y2);
+    }
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = barWidth;
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.stroke(path);
+    ctx.restore();
+    return;
+  }
+
   /*
-   * Two passes: a soft outer glow first, then a crisp gradient line on top.
-   * The glow uses canvas shadow to bloom out from each bar; the second pass
-   * paints the actual gradient with no blur for sharp definition.
+   * High-fidelity path: soft outer glow followed by a per-bar gradient.
+   * The glow uses canvas shadow to bloom out from each bar; the second
+   * pass paints the actual gradient with no blur for sharp definition.
    */
   for (let pass = 0; pass < 2; pass++) {
     const isGlow = pass === 0;
@@ -88,10 +143,8 @@ export function drawRadialSpectrum(
       const magnitude = (freqs[i] / 255) * sensitivity;
       const barLength = Math.min(maxBarLength, magnitude * maxBarLength);
       if (barLength < 1) continue;
-
-      const angle = (i / barCount) * Math.PI * 2 - Math.PI / 2;
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
+      const cos = angles[i * 2];
+      const sin = angles[i * 2 + 1];
       const x1 = cx + innerRadius * cos;
       const y1 = cy + innerRadius * sin;
       const x2 = cx + (innerRadius + barLength) * cos;
