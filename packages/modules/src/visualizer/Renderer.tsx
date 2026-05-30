@@ -77,6 +77,7 @@ export function VisualizerRenderer({
     frequencyLayout,
     bottomFade,
     cellRows,
+    triangleSize,
   } = resolveStyleSettings(config, style);
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const { rotate, scaleX, scaleY } = orientationTransform(config);
@@ -316,6 +317,7 @@ export function VisualizerRenderer({
           sensitivity,
           showGrid,
           ringSpeed,
+          triangleSize,
           state: plasmaStateRef.current,
           performanceMode,
         });
@@ -352,6 +354,7 @@ export function VisualizerRenderer({
     frequencyLayout,
     bottomFade,
     cellRows,
+    triangleSize,
     performanceMode,
   ]);
 

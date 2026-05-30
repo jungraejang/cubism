@@ -76,6 +76,13 @@ export const PerStyleSettingsSchema = z.object({
    * black. Currently honored by the plasma style only.
    */
   vignette: z.number().min(0).max(1).optional(),
+  /**
+   * Scale factor for the plasma triangle clip (0.3 — 1.0). 1.0 = the
+   * largest equilateral triangle that fits the canvas; smaller values
+   * shrink it about the canvas center, leaving more black around it.
+   * Only the plasma style consumes this field today.
+   */
+  triangleSize: z.number().min(0.3).max(1).optional(),
 });
 
 export type PerStyleSettings = z.infer<typeof PerStyleSettingsSchema>;
@@ -184,6 +191,7 @@ export type ResolvedStyleSettings = {
   bottomFade: number;
   cellRows: number;
   vignette: number;
+  triangleSize: number;
 };
 
 export const FREQUENCY_LAYOUT_OPTIONS = [
@@ -214,6 +222,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
     vignette: 0,
+    triangleSize: 1,
   },
   "radial-spectrum": {
     lineColor: "#22d3ee",
@@ -231,6 +240,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
     vignette: 0,
+    triangleSize: 1,
   },
   "concentric-rings": {
     lineColor: "#fb923c",
@@ -248,6 +258,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
     vignette: 0,
+    triangleSize: 1,
   },
   "stacked-waves": {
     /*
@@ -270,6 +281,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
     vignette: 0,
+    triangleSize: 1,
   },
   "filled-spectrum": {
     /*
@@ -293,6 +305,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     bottomFade: 0.45,
     cellRows: DEFAULT_CELL_ROWS,
     vignette: 0,
+    triangleSize: 1,
   },
   "pixel-bars": {
     /*
@@ -315,6 +328,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
     vignette: 0,
+    triangleSize: 1,
   },
   fractal: {
     /*
@@ -340,6 +354,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
     vignette: 0,
+    triangleSize: 1,
   },
   "orbit-arcs": {
     /*
@@ -368,6 +383,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
     vignette: 0,
+    triangleSize: 1,
   },
   plasma: {
     /*
@@ -402,6 +418,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
      * compose the two effects.
      */
     vignette: 0,
+    triangleSize: 1,
   },
 };
 
@@ -452,6 +469,9 @@ export function resolveStyleSettings(
     // vignette has no legacy counterpart either; per-style override
     // or per-style default only.
     vignette: o.vignette !== undefined ? o.vignette : d.vignette,
+    // triangleSize is plasma-only and has no legacy field.
+    triangleSize:
+      o.triangleSize !== undefined ? o.triangleSize : d.triangleSize,
   };
 
   return result;

@@ -117,6 +117,7 @@ export function VisualizerControls({
     frequencyLayout,
     bottomFade,
     cellRows,
+    triangleSize,
   } = resolved;
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const rotation = config.rotation ?? 0;
@@ -346,6 +347,7 @@ export function VisualizerControls({
               sensitivity,
               showGrid: false,
               ringSpeed,
+              triangleSize,
               state: previewPlasmaRef.current,
               performanceMode,
             });
@@ -763,6 +765,32 @@ export function VisualizerControls({
             />
             <span className="text-xs text-zinc-500">
               Blends the bottom of the fill into the black background.
+            </span>
+          </label>
+        ) : null}
+        {style === "plasma" ? (
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="flex justify-between text-zinc-400">
+              <span>Triangle size</span>
+              <span className="font-mono text-zinc-500">
+                {Math.round(triangleSize * 100)}%
+              </span>
+            </span>
+            <input
+              type="range"
+              min={0.3}
+              max={1}
+              step={0.02}
+              value={triangleSize}
+              onChange={(event) =>
+                patchStyle({ triangleSize: Number(event.target.value) })
+              }
+              className="accent-cyan-400"
+            />
+            <span className="text-xs text-zinc-500">
+              Scales the equilateral triangle clip about the canvas center.
+              100% = largest that fits; smaller values leave more black space
+              around the plasma.
             </span>
           </label>
         ) : null}

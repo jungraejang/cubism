@@ -91,6 +91,12 @@ export type DrawPlasmaOptions = {
   showGrid: boolean;
   /** Base time-advance rate (reused from the ringSpeed slider, 1..20). */
   ringSpeed: number;
+  /**
+   * Triangle size as a fraction (0.3..1) of the largest equilateral
+   * triangle that fits the canvas. 1 = canvas-filling, smaller values
+   * shrink the triangle about the canvas center with black around it.
+   */
+  triangleSize: number;
   /** Caller-owned, mutated in place. Hold it in a useRef. */
   state: PlasmaState;
   /** Shrinks the offscreen buffer to ~128 max dimension for Pi. */
@@ -110,6 +116,7 @@ export function drawPlasma(
     glowColor,
     sensitivity,
     ringSpeed,
+    triangleSize,
     state,
     performanceMode = false,
   } = opts;
@@ -250,7 +257,14 @@ export function drawPlasma(
   const triCx = width / 2;
   const triCy = height / 2;
   const SQRT3 = Math.sqrt(3);
-  const side = Math.min(width, (2 * height) / SQRT3);
+  /*
+   * `triangleSize` scales the max-fitting equilateral triangle about
+   * the canvas center. Clamped to a usable range so a stray bad value
+   * can't shrink the triangle to nothing or push it past the canvas.
+   */
+  const sizeFraction = Math.min(1, Math.max(0.1, triangleSize));
+  const maxSide = Math.min(width, (2 * height) / SQRT3);
+  const side = maxSide * sizeFraction;
   const triHeight = (side * SQRT3) / 2;
   const apexY = triCy - triHeight / 2;
   const baseY = triCy + triHeight / 2;
