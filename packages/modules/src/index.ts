@@ -4,6 +4,7 @@ import { textModule } from "./text";
 import { weatherModule } from "./weather";
 import { spotifyModule } from "./spotify";
 import { visualizerModule } from "./visualizer";
+import { aiAssistantModule } from "./ai-assistant";
 
 /**
  * The single source of truth for all registered modules. Adding a new module
@@ -17,6 +18,7 @@ export const modules: readonly AnyCubismModule[] = [
   weatherModule,
   spotifyModule,
   visualizerModule,
+  aiAssistantModule,
 ];
 
 export * from "./types";

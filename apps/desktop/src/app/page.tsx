@@ -95,6 +95,27 @@ export default function DesktopHomePage() {
      *   select     → invoke the active module's `onPrimaryAction` if it
      *                exposes one (visualizer uses this to cycle styles)
      */
+    /**
+     * AI Assistant — desktop is the speaker. The server fans `ai:tts`
+     * to the entire user room; we play it via the browser's Web Speech
+     * API. Cancel any in-flight utterance first so back-to-back
+     * responses don't pile up in the speech queue.
+     */
+    socket.on("ai:tts", (payload) => {
+      if (typeof window === "undefined") return;
+      const synth = window.speechSynthesis;
+      if (!synth) return;
+      try {
+        synth.cancel();
+        const utter = new SpeechSynthesisUtterance(payload.text);
+        utter.rate = 1;
+        utter.pitch = 1;
+        synth.speak(utter);
+      } catch (err) {
+        console.warn("[ai] speechSynthesis failed:", err);
+      }
+    });
+
     socket.on("controller:input", (payload) => {
       if (payload.deviceId !== deviceId) return;
       if (payload.action === "select") {
@@ -125,6 +146,7 @@ export default function DesktopHomePage() {
       socket.off("disconnect");
       socket.off("device:status");
       socket.off("command:ack");
+      socket.off("ai:tts");
       socket.off("controller:input");
       socket.disconnect();
     };

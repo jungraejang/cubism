@@ -60,6 +60,53 @@ export type ServerToClientEvents = {
     action: ControllerAction;
     timestamp: string;
   }) => void;
+
+  /**
+   * AI Assistant lifecycle events. The Pi captures push-to-talk audio and
+   * sends it to the server (see `ai:audio` on the client→server side); the
+   * server orchestrates STT → LLM and fans the results back over these
+   * events. All three events carry a `requestId` so the renderer can
+   * correlate transcript/response/error pairs and ignore stale results
+   * from a cancelled/superseded request.
+   */
+  "ai:state": (payload: {
+    deviceId: string;
+    userId: string;
+    requestId: string;
+    state: "processing" | "idle" | "error";
+  }) => void;
+
+  "ai:transcript": (payload: {
+    deviceId: string;
+    userId: string;
+    requestId: string;
+    text: string;
+  }) => void;
+
+  "ai:response": (payload: {
+    deviceId: string;
+    userId: string;
+    requestId: string;
+    text: string;
+  }) => void;
+
+  /**
+   * Tells the desktop browser (which has speakers) to play a TTS rendering
+   * of the response. Sent fanout to the entire user room; only the desktop
+   * actually consumes it via `window.speechSynthesis`.
+   */
+  "ai:tts": (payload: {
+    userId: string;
+    requestId: string;
+    text: string;
+  }) => void;
+
+  "ai:error": (payload: {
+    deviceId: string;
+    userId: string;
+    requestId: string;
+    message: string;
+  }) => void;
 };
 
 export type ClientToServerEvents = {
@@ -101,6 +148,39 @@ export type ClientToServerEvents = {
     action: ControllerAction;
     timestamp: string;
   }) => void;
+
+  /**
+   * AI Assistant audio upload — push-to-talk recording from the Pi's USB
+   * mic. The server runs this through a Whisper-compatible STT endpoint,
+   * pipes the transcript into LM Studio, then emits `ai:transcript`,
+   * `ai:response`, and `ai:tts` back to the user's room.
+   *
+   * `audio` is the raw encoded blob (default webm/opus from
+   * MediaRecorder). Socket.IO transports binary natively, so the field
+   * arrives as a Node Buffer on the server side.
+   *
+   * `config` carries per-conversation tunables resolved from the active
+   * AI module's settings on the desktop. The server does not persist this
+   * across requests; the desktop is the source of truth.
+   */
+  "ai:audio": (payload: {
+    deviceId: string;
+    userId: string;
+    requestId: string;
+    audio: ArrayBuffer | Uint8Array;
+    mime: string;
+    config: {
+      lmStudioUrl: string;
+      llmModel: string;
+      whisperUrl: string;
+      whisperModel: string;
+      systemPrompt: string;
+      maxTurns: number;
+    };
+  }) => void;
+
+  /** Clear the server-side conversation history for this user. */
+  "ai:reset": (payload: { userId: string }) => void;
 };
 
 export type InterServerEvents = Record<string, never>;

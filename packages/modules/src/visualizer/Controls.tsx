@@ -19,10 +19,7 @@ import {
 import type { WaveformFrame } from "./capture";
 import { drawWaveform } from "./drawWaveform";
 import { drawRadialSpectrum } from "./drawRadialSpectrum";
-import {
-  tickAndDrawConcentricRings,
-  type Ring,
-} from "./drawConcentricRings";
+import { tickAndDrawConcentricRings, type Ring } from "./drawConcentricRings";
 import { drawStackedWaves } from "./drawStackedWaves";
 import { drawFilledSpectrum } from "./drawFilledSpectrum";
 import { drawPixelBars } from "./drawPixelBars";
@@ -36,11 +33,7 @@ import {
   createOrbitArcsState,
   type OrbitArcsState,
 } from "./drawOrbitArcs";
-import {
-  drawPlasma,
-  createPlasmaState,
-  type PlasmaState,
-} from "./drawPlasma";
+import { drawPlasma, createPlasmaState, type PlasmaState } from "./drawPlasma";
 import {
   getActiveSource,
   getLastFrame,
@@ -171,7 +164,9 @@ export function VisualizerControls({
         patch({ preferredSource: source });
       }
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Could not start capture.");
+      setStatus(
+        err instanceof Error ? err.message : "Could not start capture.",
+      );
     } finally {
       setBusy(false);
     }
@@ -394,8 +389,8 @@ export function VisualizerControls({
         <p className="mt-1 text-xs text-zinc-500">
           Choose a source. For <em>System / Tab audio</em>, your browser will
           ask you to share a screen, window, or tab — tick{" "}
-          <span className="text-zinc-300">&quot;Share audio&quot;</span> in
-          the picker for sound. For <em>Microphone</em>, just grant the mic
+          <span className="text-zinc-300">&quot;Share audio&quot;</span> in the
+          picker for sound. For <em>Microphone</em>, just grant the mic
           permission.
         </p>
 
@@ -729,9 +724,7 @@ export function VisualizerControls({
                   key={option.value}
                   type="button"
                   whileTap={{ scale: 0.95 }}
-                  onClick={() =>
-                    patchStyle({ frequencyLayout: option.value })
-                  }
+                  onClick={() => patchStyle({ frequencyLayout: option.value })}
                   className={`rounded-lg px-3 py-2 text-sm ${
                     frequencyLayout === option.value
                       ? "bg-cyan-400 text-zinc-950"
@@ -788,9 +781,9 @@ export function VisualizerControls({
               className="accent-cyan-400"
             />
             <span className="text-xs text-zinc-500">
-              Scales the equilateral triangle clip about the canvas center.
-              100% = largest that fits; smaller values leave more black space
-              around the plasma.
+              Scales the equilateral triangle clip about the canvas center. 100%
+              = largest that fits; smaller values leave more black space around
+              the plasma.
             </span>
           </label>
         ) : null}

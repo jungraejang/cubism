@@ -3,10 +3,7 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { orientationTransform } from "../_lib/orientation";
-import {
-  PIXEL_SHIFT_DURATION_S,
-  usePixelShift,
-} from "../_lib/usePixelShift";
+import { PIXEL_SHIFT_DURATION_S, usePixelShift } from "../_lib/usePixelShift";
 import type { RendererProps } from "../types";
 import {
   DEFAULT_PERFORMANCE_MODE,
@@ -19,10 +16,7 @@ import {
 } from "./config";
 import { drawWaveform } from "./drawWaveform";
 import { drawRadialSpectrum } from "./drawRadialSpectrum";
-import {
-  tickAndDrawConcentricRings,
-  type Ring,
-} from "./drawConcentricRings";
+import { tickAndDrawConcentricRings, type Ring } from "./drawConcentricRings";
 import { drawStackedWaves } from "./drawStackedWaves";
 import { drawFilledSpectrum } from "./drawFilledSpectrum";
 import { drawPixelBars } from "./drawPixelBars";
@@ -36,11 +30,7 @@ import {
   createOrbitArcsState,
   type OrbitArcsState,
 } from "./drawOrbitArcs";
-import {
-  drawPlasma,
-  createPlasmaState,
-  type PlasmaState,
-} from "./drawPlasma";
+import { drawPlasma, createPlasmaState, type PlasmaState } from "./drawPlasma";
 
 /**
  * Maximum age, in milliseconds, that a received frame is considered "live".

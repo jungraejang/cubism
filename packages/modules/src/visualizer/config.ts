@@ -51,9 +51,7 @@ export const PerStyleSettingsSchema = z.object({
    * X-axis FFT mapping for `stacked-waves`. Ignored by other styles.
    * See `frequencyLayout` on the resolved settings type for details.
    */
-  frequencyLayout: z
-    .enum(["mirrored", "linear", "linear-reverse"])
-    .optional(),
+  frequencyLayout: z.enum(["mirrored", "linear", "linear-reverse"]).optional(),
   /**
    * Strength of the "fade to black" overlay applied to the bottom of the
    * filled-spectrum silhouette so it blends into the surrounding canvas.
@@ -444,7 +442,7 @@ export function resolveStyleSettings(
     perStyle: T | undefined,
     legacy: T | undefined,
     fallback: T,
-  ): T => (perStyle !== undefined ? perStyle : legacy ?? fallback);
+  ): T => (perStyle !== undefined ? perStyle : (legacy ?? fallback));
 
   const result: ResolvedStyleSettings = {
     lineColor: pick(o.lineColor, config.lineColor, d.lineColor),

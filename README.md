@@ -120,3 +120,26 @@ Supabase is wired up but auth stays mocked for the MVP via `NEXT_PUBLIC_DEMO_USE
 | ------------------------- | -------------------------------------------------------- |
 | `NEXT_PUBLIC_SOCKET_URL`  | URL of the desktop process (e.g. `http://laptop:3000`).  |
 | `NEXT_PUBLIC_DEVICE_ID`   | Stable id for this hologram device.                      |
+
+## AI Assistant setup
+
+The AI Assistant module turns the hologram into a push-to-talk voice agent: the Pi captures audio from a USB mic, the desktop process transcribes it via a local Whisper service, pipes the transcript through LM Studio for a response, then plays the response on the desktop's speakers while showing it on the hologram.
+
+Three pieces need to be running on the desktop machine alongside `pnpm dev`:
+
+1. **LM Studio** with at least one chat model loaded. Enable **Local Server** under **Developer → Local Server** so its OpenAI-compatible API binds to `http://127.0.0.1:1234`.
+2. **Whisper STT** — any OpenAI-compatible `/v1/audio/transcriptions` server. The easiest is `faster-whisper-server` via Docker:
+
+   ```bash
+   docker run --rm -p 8000:8000 \
+     -v ~/.cache/huggingface:/root/.cache/huggingface \
+     --name faster-whisper-server \
+     fedirz/faster-whisper-server:latest-cpu
+   ```
+
+   (Drop `-cpu` for GPU images.) First request downloads the model; subsequent calls are fast.
+3. A USB mic plugged into the Pi. The renderer prompts for mic permission the first time you press the center key — accept it, and it remembers for future sessions.
+
+Then open the desktop control panel, pick **AI Assistant** from Modules, hit **Test** on both the LM Studio and Whisper fields, and press the center macropad key (or `Space` / `Enter` on the Pi's keyboard) to talk. Press it again to stop and send.
+
+The defaults in `apps/desktop/.env.example` (`CUBISM_LMSTUDIO_URL`, `CUBISM_WHISPER_URL`, `CUBISM_WHISPER_MODEL`, `CUBISM_AI_SYSTEM_PROMPT`, `CUBISM_AI_MAX_TURNS`) all point at the URLs above and can be overridden at runtime from the Controls panel.
