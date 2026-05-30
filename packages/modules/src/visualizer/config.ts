@@ -17,6 +17,7 @@ export const VISUALIZER_STYLE_OPTIONS = [
   { value: "pixel-bars", label: "Pixel bars" },
   { value: "fractal", label: "Fractal feedback" },
   { value: "orbit-arcs", label: "Orbit arcs" },
+  { value: "plasma", label: "Plasma" },
 ] as const;
 
 export type VisualizerStyle =
@@ -66,6 +67,15 @@ export const PerStyleSettingsSchema = z.object({
    * styles ignore this field.
    */
   cellRows: z.number().int().min(4).max(48).optional(),
+  /**
+   * Strength of the soft "fade to black" radial vignette overlay drawn
+   * on top of the rendered style. 0 = no vignette (style fills edge to
+   * edge); 1 = aggressive fade starting near the center. Useful for
+   * styles that paint full-frame color (plasma, fractal) to hide the
+   * hard rectangular canvas edges and blend into the surrounding
+   * black. Currently honored by the plasma style only.
+   */
+  vignette: z.number().min(0).max(1).optional(),
 });
 
 export type PerStyleSettings = z.infer<typeof PerStyleSettingsSchema>;
@@ -82,6 +92,7 @@ export const VisualizerConfigSchema = z.object({
       "pixel-bars",
       "fractal",
       "orbit-arcs",
+      "plasma",
     ])
     .optional(),
 
@@ -100,6 +111,7 @@ export const VisualizerConfigSchema = z.object({
       "pixel-bars": PerStyleSettingsSchema.optional(),
       fractal: PerStyleSettingsSchema.optional(),
       "orbit-arcs": PerStyleSettingsSchema.optional(),
+      plasma: PerStyleSettingsSchema.optional(),
     })
     .optional(),
 
@@ -171,6 +183,7 @@ export type ResolvedStyleSettings = {
   frequencyLayout: "mirrored" | "linear" | "linear-reverse";
   bottomFade: number;
   cellRows: number;
+  vignette: number;
 };
 
 export const FREQUENCY_LAYOUT_OPTIONS = [
@@ -200,6 +213,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     frequencyLayout: "mirrored",
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
+    vignette: 0,
   },
   "radial-spectrum": {
     lineColor: "#22d3ee",
@@ -216,6 +230,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     frequencyLayout: "mirrored",
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
+    vignette: 0,
   },
   "concentric-rings": {
     lineColor: "#fb923c",
@@ -232,6 +247,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     frequencyLayout: "mirrored",
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
+    vignette: 0,
   },
   "stacked-waves": {
     /*
@@ -253,6 +269,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     frequencyLayout: "mirrored",
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
+    vignette: 0,
   },
   "filled-spectrum": {
     /*
@@ -275,6 +292,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     frequencyLayout: "linear",
     bottomFade: 0.45,
     cellRows: DEFAULT_CELL_ROWS,
+    vignette: 0,
   },
   "pixel-bars": {
     /*
@@ -296,6 +314,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     frequencyLayout: "linear",
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
+    vignette: 0,
   },
   fractal: {
     /*
@@ -320,6 +339,7 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     frequencyLayout: "linear",
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
+    vignette: 0,
   },
   "orbit-arcs": {
     /*
@@ -347,6 +367,41 @@ export const STYLE_DEFAULTS: Record<VisualizerStyle, ResolvedStyleSettings> = {
     frequencyLayout: "linear",
     bottomFade: 0,
     cellRows: DEFAULT_CELL_ROWS,
+    vignette: 0,
+  },
+  plasma: {
+    /*
+     * Demo-scene cosine plasma. The pixel color at (x,y,t) is the sum
+     * of a handful of sin terms folded through a precomputed palette
+     * LUT — classic 90s graphics-card warmup vibe. `lineColor` →
+     * `glowColor` → `lineColor2` is a 3-stop gradient that fills the
+     * 256-entry LUT (HSL-interpolated for smooth hue transitions). The
+     * pattern always advances; bass speeds up the linear flow, treble
+     * speeds up the radial ripples, so the vibe shifts with the music.
+     * `ringSpeed` is reused as the base time-advance rate; nothing
+     * else from the schema applies to this style.
+     */
+    lineColor: "#06b6d4",
+    lineColor2: "#f43f5e",
+    glowColor: "#a78bfa",
+    gridColor: "#1e3a47",
+    lineWidth: 1,
+    sensitivity: 1.2,
+    showGrid: false,
+    barCount: DEFAULT_BAR_COUNT,
+    ringCount: DEFAULT_RING_COUNT,
+    ringSpeed: 5,
+    stackCount: DEFAULT_STACK_COUNT,
+    frequencyLayout: "linear",
+    bottomFade: 0,
+    cellRows: DEFAULT_CELL_ROWS,
+    /*
+     * Plasma uses a hard-edged equilateral triangle clip (see
+     * drawPlasma.ts) instead of a soft vignette, so this field is
+     * unused for the plasma style today. Kept at 0 in case we ever
+     * compose the two effects.
+     */
+    vignette: 0,
   },
 };
 
@@ -394,6 +449,9 @@ export function resolveStyleSettings(
     // cellRows has no legacy flat-field counterpart — new field added
     // with the pixel-bars style.
     cellRows: o.cellRows !== undefined ? o.cellRows : d.cellRows,
+    // vignette has no legacy counterpart either; per-style override
+    // or per-style default only.
+    vignette: o.vignette !== undefined ? o.vignette : d.vignette,
   };
 
   return result;

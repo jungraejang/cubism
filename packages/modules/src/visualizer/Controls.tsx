@@ -37,6 +37,11 @@ import {
   type OrbitArcsState,
 } from "./drawOrbitArcs";
 import {
+  drawPlasma,
+  createPlasmaState,
+  type PlasmaState,
+} from "./drawPlasma";
+import {
   getActiveSource,
   getLastFrame,
   isCapturing,
@@ -120,7 +125,8 @@ export function VisualizerControls({
     style === "stacked-waves" ||
     style === "filled-spectrum" ||
     style === "pixel-bars" ||
-    style === "orbit-arcs";
+    style === "orbit-arcs" ||
+    style === "plasma";
   const supportsFrequencyLayout =
     style === "stacked-waves" ||
     style === "filled-spectrum" ||
@@ -195,6 +201,12 @@ export function VisualizerControls({
   const previewOrbitArcsRef = useRef<OrbitArcsState>(createOrbitArcsState());
   useEffect(() => {
     previewOrbitArcsRef.current = createOrbitArcsState();
+  }, [style]);
+
+  /** Preview-local plasma buffer + LUT. */
+  const previewPlasmaRef = useRef<PlasmaState>(createPlasmaState());
+  useEffect(() => {
+    previewPlasmaRef.current = createPlasmaState();
   }, [style]);
 
   /**
@@ -320,6 +332,21 @@ export function VisualizerControls({
               ringCount,
               ringSpeed,
               state: previewOrbitArcsRef.current,
+              performanceMode,
+            });
+          } else if (style === "plasma") {
+            drawPlasma(ctx, frame.freqs, {
+              width,
+              height,
+              lineColor,
+              lineColor2,
+              glowColor,
+              gridColor,
+              lineWidth: lineWidth * ratio,
+              sensitivity,
+              showGrid: false,
+              ringSpeed,
+              state: previewPlasmaRef.current,
               performanceMode,
             });
           } else {
@@ -454,7 +481,9 @@ export function VisualizerControls({
                         ? "Line = curve hue base (hue cycles) · Glow = halo"
                         : style === "orbit-arcs"
                           ? "Line = outer arc · Line 2 = inner arc · Glow = halo (inner arc is rainbow)"
-                          : "Line = waveform · Glow = halo"}
+                          : style === "plasma"
+                            ? "Line → Glow → Line 2 = 3-stop palette across plasma value range"
+                            : "Line = waveform · Glow = halo"}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-4">
@@ -613,33 +642,47 @@ export function VisualizerControls({
             </label>
           </>
         ) : null}
-        {style === "concentric-rings" || style === "orbit-arcs" ? (
+        {style === "concentric-rings" ||
+        style === "orbit-arcs" ||
+        style === "plasma" ? (
           <>
-            <label className="flex flex-col gap-1">
-              <span className="flex justify-between text-zinc-400">
-                <span>{style === "orbit-arcs" ? "Arc count" : "Ring count"}</span>
-                <span className="font-mono text-zinc-500">{ringCount}</span>
-              </span>
-              <input
-                type="range"
-                min={2}
-                max={style === "orbit-arcs" ? 12 : 24}
-                step={1}
-                value={ringCount}
-                onChange={(event) =>
-                  patchStyle({ ringCount: Number(event.target.value) })
-                }
-                className="accent-cyan-400"
-              />
-            </label>
+            {style !== "plasma" ? (
+              <label className="flex flex-col gap-1">
+                <span className="flex justify-between text-zinc-400">
+                  <span>
+                    {style === "orbit-arcs" ? "Arc count" : "Ring count"}
+                  </span>
+                  <span className="font-mono text-zinc-500">{ringCount}</span>
+                </span>
+                <input
+                  type="range"
+                  min={2}
+                  max={style === "orbit-arcs" ? 12 : 24}
+                  step={1}
+                  value={ringCount}
+                  onChange={(event) =>
+                    patchStyle({ ringCount: Number(event.target.value) })
+                  }
+                  className="accent-cyan-400"
+                />
+              </label>
+            ) : null}
             <label className="flex flex-col gap-1">
               <span className="flex justify-between text-zinc-400">
                 <span>
-                  {style === "orbit-arcs" ? "Rotation speed" : "Ripple speed"}
+                  {style === "orbit-arcs"
+                    ? "Rotation speed"
+                    : style === "plasma"
+                      ? "Flow speed"
+                      : "Ripple speed"}
                 </span>
                 <span className="font-mono text-zinc-500">
                   {ringSpeed}
-                  {style === "orbit-arcs" ? "°/s" : "px/f"}
+                  {style === "orbit-arcs"
+                    ? "°/s"
+                    : style === "plasma"
+                      ? ""
+                      : "px/f"}
                 </span>
               </span>
               <input

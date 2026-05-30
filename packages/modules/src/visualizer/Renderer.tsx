@@ -36,6 +36,11 @@ import {
   createOrbitArcsState,
   type OrbitArcsState,
 } from "./drawOrbitArcs";
+import {
+  drawPlasma,
+  createPlasmaState,
+  type PlasmaState,
+} from "./drawPlasma";
 
 /**
  * Maximum age, in milliseconds, that a received frame is considered "live".
@@ -134,6 +139,17 @@ export function VisualizerRenderer({
   const orbitArcsStateRef = useRef<OrbitArcsState>(createOrbitArcsState());
   useEffect(() => {
     orbitArcsStateRef.current = createOrbitArcsState();
+  }, [style]);
+
+  /*
+   * Persistent offscreen buffer + palette LUT + t/t2 accumulators for
+   * the plasma style. Reset on style change so a stale buffer doesn't
+   * leak through (it would just get overwritten on first frame anyway,
+   * but resetting keeps memory tidy when switching styles).
+   */
+  const plasmaStateRef = useRef<PlasmaState>(createPlasmaState());
+  useEffect(() => {
+    plasmaStateRef.current = createPlasmaState();
   }, [style]);
 
   useEffect(() => {
@@ -286,6 +302,21 @@ export function VisualizerRenderer({
           ringCount,
           ringSpeed,
           state: orbitArcsStateRef.current,
+          performanceMode,
+        });
+      } else if (style === "plasma") {
+        drawPlasma(ctx, freqs, {
+          width,
+          height,
+          lineColor,
+          lineColor2,
+          glowColor,
+          gridColor,
+          lineWidth: lineWidth * ratio,
+          sensitivity,
+          showGrid,
+          ringSpeed,
+          state: plasmaStateRef.current,
           performanceMode,
         });
       } else {
