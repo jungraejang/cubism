@@ -16,6 +16,23 @@ export type OrbitArcsState = {
    * golden-angle stride (≈137.5°) so arcs don't start aligned.
    */
   rotations: number[];
+  /**
+   * Current signed angular velocity per arc, in rad/sec. Sign carries
+   * the arc's natural direction (alternating CW/CCW). The magnitude
+   * is what the music actually steers — it eases toward a target
+   * derived from the arc's band energy and gets impulse-kicked by
+   * onset detection. Persisting this between frames is what gives the
+   * arcs their flywheel / mass feel: they don't snap to a new speed,
+   * they accelerate into it.
+   */
+  velocities: number[];
+  /**
+   * Exponential moving average of each arc's band energy. Used purely
+   * for onset detection — when the live band reading exceeds this
+   * EMA by a margin, we treat it as a transient (drum hit) and inject
+   * an angular impulse into the arc's velocity.
+   */
+  bandHistory: number[];
   /** Slowly-rotating hue for the rainbow innermost arc. */
   hue: number;
   /** performance.now() timestamp of the previous tick, for dt math. */
@@ -23,7 +40,13 @@ export type OrbitArcsState = {
 };
 
 export function createOrbitArcsState(): OrbitArcsState {
-  return { rotations: [], hue: 0, lastTickAt: 0 };
+  return {
+    rotations: [],
+    velocities: [],
+    bandHistory: [],
+    hue: 0,
+    lastTickAt: 0,
+  };
 }
 
 export type DrawOrbitArcsOptions = {
@@ -84,7 +107,7 @@ export function drawOrbitArcs(
   if (width <= 0 || height <= 0) return;
 
   const count = Math.max(1, Math.min(24, Math.floor(ringCount)));
-  ensureRotations(state, count);
+  ensureArrays(state, count);
 
   // --- Time delta -----------------------------------------------------
   const now = performance.now();
@@ -93,9 +116,43 @@ export function drawOrbitArcs(
     : 0;
   state.lastTickAt = now;
 
-  // --- Bass for global pulse + slow hue cycle -------------------------
+  // --- Bass for slow hue cycle ---------------------------------------
   const bass = avgBand(freqs, 0, 0.12);
   state.hue = (state.hue + dt * (20 + bass * 60)) % 360;
+
+  // --- Velocity dynamics tuning --------------------------------------
+  /*
+   * Angular velocity is updated each frame with a critically-damped
+   * easing toward an audio-driven target. The time constant below
+   * controls how snappily the arcs respond to changes in band energy.
+   * 6 → ~166ms time constant: quick enough to feel reactive, slow
+   * enough that the arcs don't appear to twitch on every frame.
+   */
+  const VELOCITY_EASING_RATE = 6;
+  const easeFactor = 1 - Math.exp(-VELOCITY_EASING_RATE * dt);
+  /*
+   * Onset detection threshold. A band reading is treated as a
+   * transient when it exceeds 1.25× its running average. The 0.92/
+   * 0.08 EMA weights give the history a half-life of ~7 frames
+   * (~120ms at 60fps), so a single kick spike is detected as an
+   * onset but a sustained loud passage is not (it just raises the
+   * baseline target speed).
+   */
+  const ONSET_RATIO = 1.25;
+  const HISTORY_RETAIN = 0.92;
+  /*
+   * Strength of the impulse kick added to angular velocity on each
+   * detected onset. 9 rad/sec at peak onset translates to roughly a
+   * half-turn of "free" rotation that then decays back to the target
+   * via the velocity easing — the visual "punch" of a drum hit.
+   */
+  const ONSET_IMPULSE = 9;
+  /*
+   * Hard ceiling on angular speed so a screamcore section doesn't
+   * pin every arc at runaway velocity. ~12 rad/sec ≈ 687°/sec ≈
+   * 1.9 full rotations per second — extremely fast, but recoverable.
+   */
+  const MAX_ANGULAR_SPEED = 12;
 
   // --- Geometry -------------------------------------------------------
   const cx = width / 2;
@@ -134,26 +191,75 @@ export function drawOrbitArcs(
     const radius = innerR + tInner * (outerR - innerR);
 
     /*
-     * Pseudo-random per-arc rotation speed. Alternating sign so
-     * neighboring arcs spin opposite ways. Variance via the golden
-     * ratio keeps speeds distinct without obvious patterns.
+     * Per-arc direction: alternating sign so neighboring arcs spin
+     * opposite ways, with a golden-ratio-derived variance so even
+     * arcs that share a sign drift apart instead of locking in
+     * lockstep. This determines the SIGN of the arc's velocity; the
+     * MAGNITUDE is driven by audio below.
      */
     const sign = i % 2 === 0 ? 1 : -1;
     const variance = 0.6 + ((i * 1.618) % 1) * 0.7;
-    const speedRadPerSec = ((ringSpeed * Math.PI) / 180) * sign * variance;
-    state.rotations[i] += speedRadPerSec * dt * (1 + bass * 0.6);
+    const dirMul = sign * variance;
+    const baseAngular = (ringSpeed * Math.PI) / 180;
 
     /*
      * Audio reactivity per arc. We map arcs to frequency bands such
      * that the OUTERMOST arc tracks bass (the big drum should pulse
      * the biggest ring) and the innermost arc tracks treble. Band
-     * energy modulates stroke thickness and overall brightness.
+     * energy modulates stroke thickness, overall brightness, AND the
+     * target rotational speed for the arc.
      */
     const bandLo = 1 - (i + 1) / count;
     const bandHi = 1 - i / count;
     const energy = avgBand(freqs, bandLo, bandHi);
     const thicknessMul = 0.6 + energy * 1.6 * sensitivity;
     const arcLineWidth = lineWidth * thicknessMul;
+
+    /*
+     * Onset detection: compare the live band reading to its running
+     * average. Anything significantly above the average is a
+     * transient (drum hit, accent, bass drop). We compute the onset
+     * BEFORE updating the EMA so a single frame can't suppress its
+     * own detection.
+     */
+    const history = state.bandHistory[i];
+    const onset = Math.max(0, energy - history * ONSET_RATIO);
+    state.bandHistory[i] = history * HISTORY_RETAIN + energy * (1 - HISTORY_RETAIN);
+
+    /*
+     * Target velocity: a baseline of 0.3× the user-configured speed
+     * (so the arcs are never fully still) plus up to ~2.5× more on
+     * loud bands, scaled by sensitivity. The velocity then eases
+     * toward this target over ~166ms.
+     */
+    const targetMagnitude =
+      baseAngular * (0.3 + energy * 2.5 * sensitivity);
+    const targetVelocity = dirMul * targetMagnitude;
+    state.velocities[i] += (targetVelocity - state.velocities[i]) * easeFactor;
+
+    /*
+     * Onset impulse: a sudden transient injects an angular kick in
+     * the arc's natural direction. The kick rides on top of the
+     * eased target, then naturally decays back through the easing.
+     * Visually this reads as the arc "lurching" forward on a drum
+     * hit and slowing into its ambient speed.
+     */
+    if (onset > 0) {
+      state.velocities[i] += dirMul * onset * ONSET_IMPULSE;
+    }
+
+    /*
+     * Clamp to prevent runaway velocity during sustained loudness
+     * (a clipped track or a noisy mic) from pinning the arc at
+     * uselessly fast rotation. Sign-preserving clamp.
+     */
+    if (state.velocities[i] > MAX_ANGULAR_SPEED) {
+      state.velocities[i] = MAX_ANGULAR_SPEED;
+    } else if (state.velocities[i] < -MAX_ANGULAR_SPEED) {
+      state.velocities[i] = -MAX_ANGULAR_SPEED;
+    }
+
+    state.rotations[i] += state.velocities[i] * dt;
 
     const center = state.rotations[i];
     const startAngle = center + ARC_GAP_RAD / 2;
@@ -230,17 +336,25 @@ export function drawOrbitArcs(
 
 // --- Helpers -----------------------------------------------------------
 
-function ensureRotations(state: OrbitArcsState, count: number): void {
+function ensureArrays(state: OrbitArcsState, count: number): void {
   while (state.rotations.length < count) {
     /*
      * Golden-angle stride (137.5°) gives a maximally-distributed set
      * of initial phases — no two arcs start near each other no matter
-     * how many we end up with.
+     * how many we end up with. New arcs are added with zero velocity
+     * and zero band history; the dynamics loop will ramp them up
+     * within a handful of frames.
      */
     const seed = state.rotations.length;
     state.rotations.push(((seed * 137.5) % 360) * (Math.PI / 180));
+    state.velocities.push(0);
+    state.bandHistory.push(0);
   }
-  if (state.rotations.length > count) state.rotations.length = count;
+  if (state.rotations.length > count) {
+    state.rotations.length = count;
+    state.velocities.length = count;
+    state.bandHistory.length = count;
+  }
 }
 
 function avgBand(freqs: Uint8Array, lo: number, hi: number): number {
