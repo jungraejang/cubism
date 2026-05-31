@@ -93,12 +93,20 @@ export type ServerToClientEvents = {
   /**
    * Tells the desktop browser (which has speakers) to play a TTS rendering
    * of the response. Sent fanout to the entire user room; only the desktop
-   * actually consumes it via `window.speechSynthesis`.
+   * actually consumes this.
+   *
+   * When `audio` is present the desktop plays those bytes directly via an
+   * HTMLAudioElement (typical case — server has synthesized speech with
+   * Piper / OpenedAI / OpenAI TTS). When omitted the desktop falls back
+   * to the browser's `window.speechSynthesis` API using `text` so a TTS
+   * outage doesn't silently mute the assistant.
    */
   "ai:tts": (payload: {
     userId: string;
     requestId: string;
     text: string;
+    audio?: ArrayBuffer | Uint8Array;
+    mime?: string;
   }) => void;
 
   "ai:error": (payload: {
@@ -174,8 +182,13 @@ export type ClientToServerEvents = {
       llmModel: string;
       whisperUrl: string;
       whisperModel: string;
+      whisperLanguage: string;
       systemPrompt: string;
       maxTurns: number;
+      ttsEnabled: boolean;
+      ttsUrl: string;
+      ttsVoice: string;
+      ttsModel: string;
     };
   }) => void;
 

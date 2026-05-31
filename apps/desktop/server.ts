@@ -26,11 +26,28 @@ const AI_DEFAULTS = {
   llmModel: process.env.CUBISM_LLM_MODEL ?? "local-model",
   whisperUrl: process.env.CUBISM_WHISPER_URL ?? "http://127.0.0.1:8000/v1",
   whisperModel:
-    process.env.CUBISM_WHISPER_MODEL ?? "Systran/faster-whisper-small.en",
+    process.env.CUBISM_WHISPER_MODEL ?? "Systran/faster-whisper-small",
+  /**
+   * Optional ISO 639-1 language hint for Whisper. Empty = auto-detect
+   * (Whisper picks from its 99 supported languages every clip).
+   * Setting e.g. `ko` makes Korean transcription faster and more
+   * accurate, especially for short utterances where auto-detect can
+   * confuse Korean with Japanese.
+   */
+  whisperLanguage: process.env.CUBISM_WHISPER_LANGUAGE ?? "",
   systemPrompt:
     process.env.CUBISM_AI_SYSTEM_PROMPT ??
     "You are a helpful AI assistant. Keep responses concise.",
   maxTurns: Number(process.env.CUBISM_AI_MAX_TURNS ?? 8),
+  /**
+   * TTS — defaults to OpenedAI Speech (Piper underneath) on port 8001.
+   * `enabled=false` (or a TTS outage) falls back to the desktop
+   * browser's built-in `speechSynthesis` voice.
+   */
+  ttsEnabled: process.env.CUBISM_TTS_ENABLED !== "false",
+  ttsUrl: process.env.CUBISM_TTS_URL ?? "http://127.0.0.1:8001/v1",
+  ttsVoice: process.env.CUBISM_TTS_VOICE ?? "nova",
+  ttsModel: process.env.CUBISM_TTS_MODEL ?? "tts-1",
 } as const;
 
 type ChatMessage = {
@@ -114,6 +131,13 @@ async function main() {
 
       if (payload.role === "desktop" && payload.userId) {
         socket.join(`user:${payload.userId}`);
+        // Separate room used by AI `ai:tts` so playback fans out only to
+        // sockets that actually have speakers and a `<audio>` handler.
+        // Without this, the renderer (Pi has no speakers) and the
+        // Controls' status-sidecar socket would also receive `ai:tts`
+        // and could trigger duplicate playback paths if any of them
+        // ever grew a handler. Belt-and-braces.
+        socket.join(`desktop:${payload.userId}`);
         console.log(`[socket] desktop registered for user: ${payload.userId}`);
       }
 
@@ -198,9 +222,23 @@ async function main() {
         whisperUrl: payload.config?.whisperUrl || AI_DEFAULTS.whisperUrl,
         whisperModel:
           payload.config?.whisperModel || AI_DEFAULTS.whisperModel,
+        // Empty string is a meaningful value here ("auto-detect"), so
+        // use a nullish fallback instead of `||`.
+        whisperLanguage:
+          payload.config?.whisperLanguage ?? AI_DEFAULTS.whisperLanguage,
         systemPrompt:
           payload.config?.systemPrompt || AI_DEFAULTS.systemPrompt,
         maxTurns: payload.config?.maxTurns || AI_DEFAULTS.maxTurns,
+        // `ttsEnabled` is a boolean so the truthy/`||` shortcut would
+        // ignore an explicit `false` from the client; check for
+        // undefined instead.
+        ttsEnabled:
+          payload.config?.ttsEnabled === undefined
+            ? AI_DEFAULTS.ttsEnabled
+            : payload.config.ttsEnabled,
+        ttsUrl: payload.config?.ttsUrl || AI_DEFAULTS.ttsUrl,
+        ttsVoice: payload.config?.ttsVoice || AI_DEFAULTS.ttsVoice,
+        ttsModel: payload.config?.ttsModel || AI_DEFAULTS.ttsModel,
       };
 
       io.to(room).emit("ai:state", {
@@ -216,6 +254,7 @@ async function main() {
           mime: payload.mime,
           whisperUrl: cfg.whisperUrl,
           whisperModel: cfg.whisperModel,
+          whisperLanguage: cfg.whisperLanguage,
         });
 
         if (!transcript.trim()) {
@@ -273,11 +312,54 @@ async function main() {
           requestId: payload.requestId,
           text: responseText,
         });
-        io.to(room).emit("ai:tts", {
-          userId: payload.userId,
-          requestId: payload.requestId,
-          text: responseText,
-        });
+
+        /**
+         * Try to render server-side TTS so the desktop can play a
+         * neural voice instead of the browser's flat default. A
+         * failure here is non-fatal — we still emit `ai:tts` with
+         * just the text so the desktop's `speechSynthesis` fallback
+         * kicks in.
+         */
+        let ttsAudio: Buffer | null = null;
+        let ttsMime: string | null = null;
+        if (cfg.ttsEnabled) {
+          try {
+            const result = await synthesizeSpeech({
+              baseUrl: cfg.ttsUrl,
+              model: cfg.ttsModel,
+              voice: cfg.ttsVoice,
+              input: responseText,
+            });
+            ttsAudio = result.audio;
+            ttsMime = result.mime;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(
+              `[ai] TTS failed (falling back to browser speech): ${msg}`,
+            );
+          }
+        }
+
+        // Scope TTS playback to the desktop-only room. Renderers and
+        // the Controls status sidecar don't play audio; emitting there
+        // would just be wasted binary traffic (or, worse, a duplicate
+        // play handler we forgot about later).
+        const desktopRoom = `desktop:${payload.userId}`;
+        if (ttsAudio && ttsMime) {
+          io.to(desktopRoom).emit("ai:tts", {
+            userId: payload.userId,
+            requestId: payload.requestId,
+            text: responseText,
+            audio: ttsAudio,
+            mime: ttsMime,
+          });
+        } else {
+          io.to(desktopRoom).emit("ai:tts", {
+            userId: payload.userId,
+            requestId: payload.requestId,
+            text: responseText,
+          });
+        }
         io.to(room).emit("ai:state", {
           deviceId: payload.deviceId,
           userId: payload.userId,
@@ -340,8 +422,9 @@ async function transcribeAudio(opts: {
   mime: string;
   whisperUrl: string;
   whisperModel: string;
+  whisperLanguage: string;
 }): Promise<string> {
-  const { audio, mime, whisperUrl, whisperModel } = opts;
+  const { audio, mime, whisperUrl, whisperModel, whisperLanguage } = opts;
   const bytes =
     audio instanceof Uint8Array
       ? audio
@@ -370,6 +453,12 @@ async function transcribeAudio(opts: {
   // the verbose JSON shape — easier to parse and works on every
   // OpenAI-compatible Whisper server I've tested.
   form.append("response_format", "text");
+  // Skip Whisper's language detection step when the user has
+  // explicitly told us which language they're speaking. Faster and
+  // noticeably more accurate on short clips.
+  if (whisperLanguage) {
+    form.append("language", whisperLanguage);
+  }
 
   const url = whisperUrl.replace(/\/$/, "") + "/audio/transcriptions";
   const res = await fetch(url, { method: "POST", body: form });
@@ -389,6 +478,45 @@ async function transcribeAudio(opts: {
     /* not JSON — fall through */
   }
   return text.trim();
+}
+
+/**
+ * Server-side TTS helper. Calls an OpenAI-compatible `/v1/audio/speech`
+ * endpoint and returns the raw audio bytes + mime type. Designed for
+ * OpenedAI Speech (Piper underneath) but works with anything that
+ * speaks the OpenAI TTS shape — drop-in upgrade path to OpenAI's
+ * `tts-1-hd` or ElevenLabs proxies.
+ *
+ * `response_format=mp3` is a small, broadly-supported format every
+ * browser's HTMLAudioElement can decode without extra glue. Piper
+ * defaults to WAV which is several times larger over the socket and
+ * a touch slower to start playback.
+ */
+async function synthesizeSpeech(opts: {
+  baseUrl: string;
+  model: string;
+  voice: string;
+  input: string;
+}): Promise<{ audio: Buffer; mime: string }> {
+  const { baseUrl, model, voice, input } = opts;
+  const url = baseUrl.replace(/\/$/, "") + "/audio/speech";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model,
+      voice,
+      input,
+      response_format: "mp3",
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`TTS call failed: HTTP ${res.status} ${body}`.trim());
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  const mime = res.headers.get("content-type") ?? "audio/mpeg";
+  return { audio: buf, mime };
 }
 
 /**

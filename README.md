@@ -125,7 +125,7 @@ Supabase is wired up but auth stays mocked for the MVP via `NEXT_PUBLIC_DEMO_USE
 
 The AI Assistant module turns the hologram into a push-to-talk voice agent: the Pi captures audio from a USB mic, the desktop process transcribes it via a local Whisper service, pipes the transcript through LM Studio for a response, then plays the response on the desktop's speakers while showing it on the hologram.
 
-Three pieces need to be running on the desktop machine alongside `pnpm dev`:
+Four pieces need to be running on the desktop machine alongside `pnpm dev`:
 
 1. **LM Studio** with at least one chat model loaded. Enable **Local Server** under **Developer → Local Server** so its OpenAI-compatible API binds to `http://127.0.0.1:1234`.
 2. **Whisper STT** — any OpenAI-compatible `/v1/audio/transcriptions` server. The easiest is `faster-whisper-server` via Docker:
@@ -138,8 +138,18 @@ Three pieces need to be running on the desktop machine alongside `pnpm dev`:
    ```
 
    (Drop `-cpu` for GPU images.) First request downloads the model; subsequent calls are fast.
-3. A USB mic plugged into the Pi. The renderer prompts for mic permission the first time you press the center key — accept it, and it remembers for future sessions.
+3. **Piper TTS** (optional but recommended) — any OpenAI-compatible `/v1/audio/speech` server. Easiest is [OpenedAI Speech](https://github.com/matatonic/openedai-speech), which wraps Piper voices behind the OpenAI TTS API. The English-only minimal image is ~150 MB:
 
-Then open the desktop control panel, pick **AI Assistant** from Modules, hit **Test** on both the LM Studio and Whisper fields, and press the center macropad key (or `Space` / `Enter` on the Pi's keyboard) to talk. Press it again to stop and send.
+   ```bash
+   docker run -d --rm -p 8001:8000 \
+     --name openedai-speech \
+     ghcr.io/matatonic/openedai-speech-min:latest
+   ```
 
-The defaults in `apps/desktop/.env.example` (`CUBISM_LMSTUDIO_URL`, `CUBISM_WHISPER_URL`, `CUBISM_WHISPER_MODEL`, `CUBISM_AI_SYSTEM_PROMPT`, `CUBISM_AI_MAX_TURNS`) all point at the URLs above and can be overridden at runtime from the Controls panel.
+   Voice names accept either OpenAI aliases (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`) or Piper voice ids (`en_US-amy-medium`, etc., if you run the full `openedai-speech:latest` image). If you skip this step or disable TTS in the Controls panel, the desktop browser's built-in Web Speech voice is used as a fallback — it works but sounds noticeably more robotic.
+
+4. A USB mic plugged into the Pi. The renderer prompts for mic permission the first time you press the center key — accept it, and it remembers for future sessions.
+
+Then open the desktop control panel, pick **AI Assistant** from Modules, hit **Test** on the LM Studio, Whisper, and Piper TTS fields, and press the center macropad key (or `Space` / `Enter` on the Pi's keyboard) to talk. Press it again to stop and send.
+
+The defaults in `apps/desktop/.env.example` (`CUBISM_LMSTUDIO_URL`, `CUBISM_WHISPER_URL`, `CUBISM_WHISPER_MODEL`, `CUBISM_TTS_URL`, `CUBISM_TTS_VOICE`, `CUBISM_TTS_MODEL`, `CUBISM_AI_SYSTEM_PROMPT`, `CUBISM_AI_MAX_TURNS`) all point at the URLs above and can be overridden at runtime from the Controls panel.

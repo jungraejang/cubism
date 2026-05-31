@@ -25,6 +25,11 @@ import {
   DEFAULT_RESPONSE_COLOR,
   DEFAULT_SYSTEM_PROMPT,
   DEFAULT_TRANSCRIPT_COLOR,
+  DEFAULT_TTS_ENABLED,
+  DEFAULT_TTS_MODEL,
+  DEFAULT_TTS_URL,
+  DEFAULT_TTS_VOICE,
+  DEFAULT_WHISPER_LANGUAGE,
   DEFAULT_WHISPER_MODEL,
   DEFAULT_WHISPER_URL,
   type AiAssistantConfig,
@@ -51,8 +56,13 @@ export function AiAssistantControls({
   const llmModel = config.llmModel ?? DEFAULT_LLM_MODEL;
   const whisperUrl = config.whisperUrl ?? DEFAULT_WHISPER_URL;
   const whisperModel = config.whisperModel ?? DEFAULT_WHISPER_MODEL;
+  const whisperLanguage = config.whisperLanguage ?? DEFAULT_WHISPER_LANGUAGE;
   const systemPrompt = config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const maxTurns = config.maxTurns ?? DEFAULT_MAX_TURNS;
+  const ttsEnabled = config.ttsEnabled ?? DEFAULT_TTS_ENABLED;
+  const ttsUrl = config.ttsUrl ?? DEFAULT_TTS_URL;
+  const ttsVoice = config.ttsVoice ?? DEFAULT_TTS_VOICE;
+  const ttsModel = config.ttsModel ?? DEFAULT_TTS_MODEL;
   const accentColor = config.accentColor ?? DEFAULT_ACCENT_COLOR;
   const transcriptColor = config.transcriptColor ?? DEFAULT_TRANSCRIPT_COLOR;
   const responseColor = config.responseColor ?? DEFAULT_RESPONSE_COLOR;
@@ -61,8 +71,10 @@ export function AiAssistantControls({
   const [last, setLast] = useState<LastInteraction>({});
   const [lmTest, setLmTest] = useState<ConnTestState>("idle");
   const [whisperTest, setWhisperTest] = useState<ConnTestState>("idle");
+  const [ttsTest, setTtsTest] = useState<ConnTestState>("idle");
   const [lmTestMsg, setLmTestMsg] = useState<string>("");
   const [whisperTestMsg, setWhisperTestMsg] = useState<string>("");
+  const [ttsTestMsg, setTtsTestMsg] = useState<string>("");
 
   const userId =
     process.env.NEXT_PUBLIC_DEMO_USER_ID ??
@@ -146,11 +158,21 @@ export function AiAssistantControls({
   // browser→127.0.0.1:8000 request would be rejected as "Failed to
   // fetch" before it ever leaves the page.
   async function testConnection(
-    kind: "lmStudio" | "whisper",
+    kind: "lmStudio" | "whisper" | "tts",
     url: string,
   ): Promise<void> {
-    const setState = kind === "lmStudio" ? setLmTest : setWhisperTest;
-    const setMsg = kind === "lmStudio" ? setLmTestMsg : setWhisperTestMsg;
+    const setState =
+      kind === "lmStudio"
+        ? setLmTest
+        : kind === "whisper"
+          ? setWhisperTest
+          : setTtsTest;
+    const setMsg =
+      kind === "lmStudio"
+        ? setLmTestMsg
+        : kind === "whisper"
+          ? setWhisperTestMsg
+          : setTtsTestMsg;
     setState("testing");
     setMsg("");
     try {
@@ -269,22 +291,142 @@ export function AiAssistantControls({
             </button>
           </div>
         </div>
-        <label className="mt-3 flex flex-col gap-1 text-sm">
-          <span className="text-zinc-400">Model</span>
-          <input
-            type="text"
-            className="rounded-lg bg-zinc-800 px-3 py-2 font-mono text-white"
-            value={whisperModel}
-            onChange={(e) => patch({ whisperModel: e.target.value.trim() })}
-            placeholder={DEFAULT_WHISPER_MODEL}
-            spellCheck={false}
-          />
-        </label>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-400">Model</span>
+            <input
+              type="text"
+              className="rounded-lg bg-zinc-800 px-3 py-2 font-mono text-white"
+              value={whisperModel}
+              onChange={(e) => patch({ whisperModel: e.target.value.trim() })}
+              placeholder={DEFAULT_WHISPER_MODEL}
+              spellCheck={false}
+            />
+            <span className="text-xs text-zinc-500">
+              Multilingual by default. Append <code>.en</code> for an
+              English-only variant.
+            </span>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-400">Language</span>
+            <select
+              className="rounded-lg bg-zinc-800 px-3 py-2 text-white"
+              value={whisperLanguage}
+              onChange={(e) => patch({ whisperLanguage: e.target.value })}
+            >
+              <option value="">Auto-detect</option>
+              <option value="en">English</option>
+              <option value="ko">Korean (한국어)</option>
+              <option value="ja">Japanese (日本語)</option>
+              <option value="zh">Chinese (中文)</option>
+              <option value="es">Spanish (Español)</option>
+              <option value="fr">French (Français)</option>
+              <option value="de">German (Deutsch)</option>
+              <option value="it">Italian (Italiano)</option>
+              <option value="pt">Portuguese (Português)</option>
+              <option value="ru">Russian (Русский)</option>
+              <option value="hi">Hindi (हिन्दी)</option>
+              <option value="ar">Arabic (العربية)</option>
+            </select>
+            <span className="text-xs text-zinc-500">
+              Skip Whisper&apos;s detection step — faster and more
+              accurate on short clips.
+            </span>
+          </label>
+        </div>
         {whisperTest !== "idle" && whisperTestMsg ? (
           <p
             className={`mt-2 text-xs ${whisperTest === "ok" ? "text-emerald-400" : whisperTest === "fail" ? "text-red-400" : "text-zinc-400"}`}
           >
             {whisperTestMsg}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-200">
+              Piper TTS (Voice)
+            </h3>
+            <p className="text-xs text-zinc-500">
+              OpenAI-compatible /v1/audio/speech endpoint. Recommended:
+              OpenedAI Speech (Piper). Disable to fall back to the desktop
+              browser&apos;s built-in voice.
+            </p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-sm text-zinc-300">
+            <input
+              type="checkbox"
+              checked={ttsEnabled}
+              onChange={(e) => patch({ ttsEnabled: e.target.checked })}
+            />
+            Enabled
+          </label>
+        </div>
+        <div
+          className={`mt-3 grid gap-3 sm:grid-cols-[1fr_auto] ${ttsEnabled ? "" : "opacity-50"}`}
+        >
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-400">Base URL</span>
+            <input
+              type="text"
+              className="rounded-lg bg-zinc-800 px-3 py-2 font-mono text-white"
+              value={ttsUrl}
+              onChange={(e) => patch({ ttsUrl: e.target.value.trim() })}
+              placeholder={DEFAULT_TTS_URL}
+              spellCheck={false}
+              disabled={!ttsEnabled}
+            />
+          </label>
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={() => testConnection("tts", ttsUrl)}
+              disabled={!ttsEnabled || ttsTest === "testing"}
+              className="rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+            >
+              {ttsTest === "testing" ? "Testing…" : "Test"}
+            </button>
+          </div>
+        </div>
+        <div
+          className={`mt-3 grid gap-3 sm:grid-cols-2 ${ttsEnabled ? "" : "opacity-50"}`}
+        >
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-400">Voice</span>
+            <input
+              type="text"
+              className="rounded-lg bg-zinc-800 px-3 py-2 font-mono text-white"
+              value={ttsVoice}
+              onChange={(e) => patch({ ttsVoice: e.target.value.trim() })}
+              placeholder={DEFAULT_TTS_VOICE}
+              spellCheck={false}
+              disabled={!ttsEnabled}
+            />
+            <span className="text-xs text-zinc-500">
+              OpenAI alias (alloy, echo, fable, onyx, nova, shimmer) or a
+              Piper voice id like en_US-amy-medium.
+            </span>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-400">Model</span>
+            <input
+              type="text"
+              className="rounded-lg bg-zinc-800 px-3 py-2 font-mono text-white"
+              value={ttsModel}
+              onChange={(e) => patch({ ttsModel: e.target.value.trim() })}
+              placeholder={DEFAULT_TTS_MODEL}
+              spellCheck={false}
+              disabled={!ttsEnabled}
+            />
+          </label>
+        </div>
+        {ttsTest !== "idle" && ttsTestMsg ? (
+          <p
+            className={`mt-2 text-xs ${ttsTest === "ok" ? "text-emerald-400" : ttsTest === "fail" ? "text-red-400" : "text-zinc-400"}`}
+          >
+            {ttsTestMsg}
           </p>
         ) : null}
       </section>

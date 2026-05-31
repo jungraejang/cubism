@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
+import { playAudioBytes, primeSpeechVoices, speak } from "@/lib/speech";
 import { modules, randomId, type ModuleStream } from "@cubism/modules";
 
 type DeviceStatus = "online" | "offline" | "unknown";
@@ -56,8 +57,28 @@ export default function DesktopHomePage() {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
+  /**
+   * Last AI request id we have already played TTS for. Used to drop
+   * duplicate `ai:tts` events (e.g. server restart races, listener
+   * accumulation after HMR) before they double-speak. Module-level
+   * cleanup of the listener should make this unnecessary; treat it
+   * as defence-in-depth.
+   */
+  const lastTtsRequestRef = useRef<string | null>(null);
+
   const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
   const deviceId = process.env.NEXT_PUBLIC_DEMO_DEVICE_ID ?? "pi-holo-001";
+
+  /**
+   * Warm up the Web Speech voice list as soon as the page loads.
+   * `getVoices()` returns an empty array on first call in Chrome /
+   * Edge — the platform populates it asynchronously and fires
+   * `voiceschanged`. Doing this on mount means by the time the first
+   * AI response arrives, the natural voice is already selected.
+   */
+  useEffect(() => {
+    primeSpeechVoices();
+  }, []);
 
   useEffect(() => {
     socket.connect();
@@ -96,24 +117,45 @@ export default function DesktopHomePage() {
      *                exposes one (visualizer uses this to cycle styles)
      */
     /**
-     * AI Assistant — desktop is the speaker. The server fans `ai:tts`
-     * to the entire user room; we play it via the browser's Web Speech
-     * API. Cancel any in-flight utterance first so back-to-back
-     * responses don't pile up in the speech queue.
+     * AI Assistant — desktop is the speaker. The server scopes
+     * `ai:tts` to the `desktop:${userId}` room so only sockets that
+     * registered as `role: "desktop"` receive it.
+     *
+     * Preferred path: the server has synthesized speech with Piper /
+     * OpenAI / etc. and shipped MP3 bytes inline — we play them with
+     * an `HTMLAudioElement`. If anything goes wrong (decode error,
+     * autoplay blocked) or the server couldn't synthesize at all (no
+     * `audio` field), fall through to the browser's built-in
+     * `speechSynthesis` voice so a Docker outage doesn't silently
+     * mute the assistant.
+     *
+     * `lastTtsRequestRef` drops stale TTS that arrived after the
+     * user has already started a new prompt — without it a slow
+     * pipeline finishing late could double-speak on top of a fresh
+     * response.
      */
-    socket.on("ai:tts", (payload) => {
-      if (typeof window === "undefined") return;
-      const synth = window.speechSynthesis;
-      if (!synth) return;
-      try {
-        synth.cancel();
-        const utter = new SpeechSynthesisUtterance(payload.text);
-        utter.rate = 1;
-        utter.pitch = 1;
-        synth.speak(utter);
-      } catch (err) {
-        console.warn("[ai] speechSynthesis failed:", err);
+    socket.on("ai:tts", async (payload) => {
+      if (lastTtsRequestRef.current === payload.requestId) {
+        console.warn(
+          "[ai] duplicate ai:tts for requestId, dropping:",
+          payload.requestId,
+        );
+        return;
       }
+      lastTtsRequestRef.current = payload.requestId;
+
+      if (payload.audio && payload.mime) {
+        try {
+          await playAudioBytes(payload.audio, payload.mime);
+          return;
+        } catch (err) {
+          console.warn(
+            "[ai] audio playback failed, falling back to speechSynthesis:",
+            err,
+          );
+        }
+      }
+      speak(payload.text);
     });
 
     socket.on("controller:input", (payload) => {
