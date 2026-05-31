@@ -179,7 +179,10 @@ export function AiAssistantControls({
       const res = await fetch("/api/ai/test", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url }),
+        // Forward the `kind` so the server can decide whether to
+        // attach a bearer token (e.g. LM Studio with auth enabled
+        // for MCP) without ever exposing the key to the browser.
+        body: JSON.stringify({ url, kind }),
       });
       const data = (await res.json()) as {
         ok: boolean;
@@ -249,7 +252,7 @@ export function AiAssistantControls({
             className="rounded-lg bg-zinc-800 px-3 py-2 font-mono text-white"
             value={llmModel}
             onChange={(e) => patch({ llmModel: e.target.value.trim() })}
-            placeholder={DEFAULT_LLM_MODEL}
+            placeholder="e.g. qwen/qwen3.5-9b (or empty → uses CUBISM_LLM_MODEL)"
             spellCheck={false}
           />
         </label>

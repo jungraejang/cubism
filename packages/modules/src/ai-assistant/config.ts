@@ -90,7 +90,15 @@ export const AiAssistantConfigSchema = z.object({
 export type AiAssistantConfig = z.infer<typeof AiAssistantConfigSchema>;
 
 export const DEFAULT_LM_STUDIO_URL = "http://127.0.0.1:1234/v1";
-export const DEFAULT_LLM_MODEL = "local-model";
+/**
+ * Empty by default so the desktop server's `CUBISM_LLM_MODEL` env var
+ * is the source of truth when the user hasn't picked a model in the
+ * Controls panel. LM Studio's `/api/v1/chat` (MCP path) rejects
+ * unknown identifiers, so a placeholder like "local-model" would
+ * actively break things — better to defer to env until the user types
+ * a real value.
+ */
+export const DEFAULT_LLM_MODEL = "";
 export const DEFAULT_WHISPER_URL = "http://127.0.0.1:8000/v1";
 export const DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-small";
 /** Empty string = auto-detect language on every clip. */

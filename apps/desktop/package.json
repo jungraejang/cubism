@@ -13,6 +13,7 @@
     "@cubism/modules": "workspace:*",
     "@cubism/protocol": "workspace:*",
     "@cubism/supabase": "workspace:*",
+    "@next/env": "^16.2.6",
     "@supabase/supabase-js": "latest",
     "framer-motion": "latest",
     "next": "16.2.6",

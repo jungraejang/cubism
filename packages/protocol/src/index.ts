@@ -115,6 +115,21 @@ export type ServerToClientEvents = {
     requestId: string;
     message: string;
   }) => void;
+
+  /**
+   * Emitted by the desktop (the actual speaker) once TTS playback for a
+   * given response finishes — either the HTMLAudioElement `ended` event
+   * fired or the Web Speech utterance reached its `onend`. The server
+   * relays this to the renderer so it can stop showing the response
+   * text exactly when the assistant stops talking, instead of relying
+   * on a length-based heuristic timer. Renderers should still keep a
+   * cap (~30 s) as a safety net in case the desktop crashes mid-clip.
+   */
+  "ai:speech-end": (payload: {
+    deviceId: string;
+    userId: string;
+    requestId: string;
+  }) => void;
 };
 
 export type ClientToServerEvents = {
@@ -194,6 +209,19 @@ export type ClientToServerEvents = {
 
   /** Clear the server-side conversation history for this user. */
   "ai:reset": (payload: { userId: string }) => void;
+
+  /**
+   * Desktop-side notification that TTS playback (Piper audio blob or
+   * Web Speech fallback) has finished for a given assistant response.
+   * The server relays this as the server-to-client `ai:speech-end`
+   * event to the user's room. Carries `deviceId` so renderers can
+   * filter to their own device's responses.
+   */
+  "ai:speech-end": (payload: {
+    deviceId: string;
+    userId: string;
+    requestId: string;
+  }) => void;
 };
 
 export type InterServerEvents = Record<string, never>;

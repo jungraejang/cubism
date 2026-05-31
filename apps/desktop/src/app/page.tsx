@@ -144,10 +144,15 @@ export default function DesktopHomePage() {
       }
       lastTtsRequestRef.current = payload.requestId;
 
+      // Whichever pipeline succeeds, we want to tell the renderer
+      // "okay, the assistant is done talking" so it can drop the
+      // response from screen at exactly the right moment instead of
+      // guessing with a fixed timer.
+      let played = false;
       if (payload.audio && payload.mime) {
         try {
           await playAudioBytes(payload.audio, payload.mime);
-          return;
+          played = true;
         } catch (err) {
           console.warn(
             "[ai] audio playback failed, falling back to speechSynthesis:",
@@ -155,7 +160,14 @@ export default function DesktopHomePage() {
           );
         }
       }
-      speak(payload.text);
+      if (!played) {
+        await speak(payload.text);
+      }
+      socket.emit("ai:speech-end", {
+        deviceId,
+        userId,
+        requestId: payload.requestId,
+      });
     });
 
     socket.on("controller:input", (payload) => {

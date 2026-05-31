@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { loadEnvConfig } from "@next/env";
 import next from "next";
 import { Server } from "socket.io";
 
@@ -8,6 +9,20 @@ import type {
   ServerToClientEvents,
   SocketData,
 } from "@cubism/protocol";
+
+/**
+ * Load `.env.local` / `.env` BEFORE any `process.env.X` read happens
+ * below. `next dev` does this automatically, but we run via
+ * `tsx watch server.ts` — a custom Node entrypoint that doesn't.
+ *
+ * Without this call, module-level constants like `AI_DEFAULTS` see
+ * empty strings for everything in `.env.local` because `next` only
+ * loads env vars during `app.prepare()`, which runs AFTER those
+ * constants have already been frozen. Symptom: AI features that
+ * depend on `LM_STUDIO_API_KEY` etc. silently fall back to their
+ * hardcoded defaults.
+ */
+loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME ?? "0.0.0.0";
@@ -24,6 +39,32 @@ const port = Number(process.env.PORT ?? 3000);
 const AI_DEFAULTS = {
   lmStudioUrl: process.env.CUBISM_LMSTUDIO_URL ?? "http://127.0.0.1:1234/v1",
   llmModel: process.env.CUBISM_LLM_MODEL ?? "local-model",
+  /**
+   * Bearer token sent on every LM Studio request when set. Required
+   * once LM Studio's local server has auth enabled (Settings → Local
+   * Server → Authentication). Kept server-side only — the desktop
+   * browser never sees it. Empty string disables the header so
+   * un-authed setups keep working.
+   */
+  lmStudioApiKey: process.env.LM_STUDIO_API_KEY ?? "",
+  /**
+   * Comma-separated list of MCP integrations to enable on every
+   * LLM call. When set, the AI pipeline switches from the
+   * OpenAI-compatible `/v1/chat/completions` endpoint (which has no
+   * MCP support) to LM Studio's own `/api/v1/chat` Responses-style
+   * endpoint, which orchestrates MCP tools server-side and returns
+   * the final answer after running them.
+   *
+   * Values are plugin ids from your `mcp.json` (e.g. `mcp/brave-search`,
+   * `mcp/fetch`, `mcp/playwright`). Requires the "Allow calling servers
+   * from mcp.json" toggle in LM Studio's Server Settings.
+   *
+   * Empty list = stay on the portable OpenAI-compat endpoint (no MCP).
+   */
+  lmStudioIntegrations: (process.env.CUBISM_LM_INTEGRATIONS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
   whisperUrl: process.env.CUBISM_WHISPER_URL ?? "http://127.0.0.1:8000/v1",
   whisperModel:
     process.env.CUBISM_WHISPER_MODEL ?? "Systran/faster-whisper-small",
@@ -290,11 +331,21 @@ async function main() {
           { role: "user", content: transcript },
         ];
 
-        const responseText = await chatCompletion({
-          baseUrl: cfg.lmStudioUrl,
-          model: cfg.llmModel,
-          messages: messagesForApi,
-        });
+        const responseText =
+          AI_DEFAULTS.lmStudioIntegrations.length > 0
+            ? await chatWithIntegrations({
+                baseUrl: cfg.lmStudioUrl,
+                model: cfg.llmModel,
+                messages: messagesForApi,
+                apiKey: AI_DEFAULTS.lmStudioApiKey,
+                integrations: AI_DEFAULTS.lmStudioIntegrations,
+              })
+            : await chatCompletion({
+                baseUrl: cfg.lmStudioUrl,
+                model: cfg.llmModel,
+                messages: messagesForApi,
+                apiKey: AI_DEFAULTS.lmStudioApiKey,
+              });
 
         const trimmed = trimHistory(
           [
@@ -389,6 +440,17 @@ async function main() {
       console.log(`[ai] history cleared for user: ${payload.userId}`);
     });
 
+    /**
+     * Relay the desktop's "TTS playback finished" notification to the
+     * user's room so the renderer can drop its `speaking` UI exactly
+     * when the audio actually ends. We re-emit the same event name on
+     * the server-to-client side; renderers filter by `deviceId`.
+     */
+    socket.on("ai:speech-end", (payload) => {
+      const room = `user:${payload.userId}`;
+      io.to(room).emit("ai:speech-end", payload);
+    });
+
     socket.on("disconnect", () => {
       console.log("[socket] disconnected:", socket.id);
 
@@ -405,6 +467,30 @@ async function main() {
   httpServer.listen(port, hostname, () => {
     console.log(
       `> Cubism desktop + socket bridge ready on http://${hostname}:${port}`,
+    );
+    // Sanity-check banner for the AI Assistant integrations. We log
+    // presence/absence rather than the actual values so secrets never
+    // hit the console — this is the fastest way to catch the classic
+    // "I added it to .env.local but didn't restart" footgun.
+    console.log(
+      `[ai] LM Studio: ${AI_DEFAULTS.lmStudioUrl}` +
+        ` | model=${AI_DEFAULTS.llmModel}` +
+        ` | auth=${AI_DEFAULTS.lmStudioApiKey ? "yes" : "no"}` +
+        ` | mcp=${
+          AI_DEFAULTS.lmStudioIntegrations.length > 0
+            ? AI_DEFAULTS.lmStudioIntegrations.join(",")
+            : "off"
+        }`,
+    );
+    console.log(
+      `[ai] Whisper:   ${AI_DEFAULTS.whisperUrl}` +
+        ` | model=${AI_DEFAULTS.whisperModel}` +
+        ` | lang=${AI_DEFAULTS.whisperLanguage || "auto"}`,
+    );
+    console.log(
+      `[ai] TTS:       ${AI_DEFAULTS.ttsUrl}` +
+        ` | voice=${AI_DEFAULTS.ttsVoice}` +
+        ` | enabled=${AI_DEFAULTS.ttsEnabled ? "yes" : "no"}`,
     );
   });
 }
@@ -528,12 +614,18 @@ async function chatCompletion(opts: {
   baseUrl: string;
   model: string;
   messages: ChatMessage[];
+  /** Bearer token. Optional — empty/undefined skips the header. */
+  apiKey?: string;
 }): Promise<string> {
-  const { baseUrl, model, messages } = opts;
+  const { baseUrl, model, messages, apiKey } = opts;
   const url = baseUrl.replace(/\/$/, "") + "/chat/completions";
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (apiKey) headers.authorization = `Bearer ${apiKey}`;
   const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers,
     body: JSON.stringify({
       model,
       messages,
@@ -552,6 +644,92 @@ async function chatCompletion(opts: {
   };
   const text = data.choices?.[0]?.message?.content ?? "";
   return text.trim();
+}
+
+/**
+ * LM Studio's Responses-style chat API with MCP integrations enabled.
+ *
+ * Different from `/v1/chat/completions` in three ways:
+ *  1. Endpoint is `<root>/api/v1/chat` (no `/v1/` after root).
+ *  2. Body uses `input` (string or array) + `integrations` (string array
+ *     of plugin ids from mcp.json) instead of the OpenAI shape.
+ *  3. Response is a flat `output` array of mixed items (`reasoning`,
+ *     `message`, `tool_call`) describing each step LM Studio took
+ *     while orchestrating the MCP tools. The final user-facing reply
+ *     is the LAST `{type: "message"}` item.
+ *
+ * We collapse our conversation history into a chat-style transcript
+ * string so the request still includes prior turns. This is the
+ * lowest-common-denominator format that works whether or not the
+ * model has a native chat template — the system prompt rides on the
+ * front so the model sees its constraints first.
+ *
+ * Docs: https://lmstudio.ai/docs/developer/core/mcp
+ */
+async function chatWithIntegrations(opts: {
+  baseUrl: string;
+  model: string;
+  messages: ChatMessage[];
+  integrations: string[];
+  apiKey?: string;
+}): Promise<string> {
+  const { baseUrl, model, messages, integrations, apiKey } = opts;
+
+  // Strip the trailing `/v1` from `baseUrl` so the LM Studio root
+  // (`http://127.0.0.1:1234`) can have `/api/v1/chat` appended. If
+  // the caller already removed it, the regex is a no-op.
+  const root = baseUrl.replace(/\/v1\/?$/, "");
+  const url = root + "/api/v1/chat";
+
+  // Build a single-string `input` that includes the full history.
+  // System message becomes a top-of-prompt instruction; user /
+  // assistant turns are role-labelled so the model can distinguish
+  // them. The trailing "Assistant:" cue nudges the model to continue.
+  const systemMsg = messages.find((m) => m.role === "system");
+  const turns = messages.filter((m) => m.role !== "system");
+  const transcript = turns
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+    .join("\n\n");
+  const input = systemMsg
+    ? `${systemMsg.content}\n\n${transcript}\n\nAssistant:`
+    : `${transcript}\n\nAssistant:`;
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      input,
+      integrations,
+      // 8 k matches the LM Studio docs example; bump if you run a
+      // long-context model and want more conversation memory.
+      context_length: 8000,
+      temperature: 0.6,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `LM Studio integrations call failed: HTTP ${res.status} ${body}`.trim(),
+    );
+  }
+  const data = (await res.json()) as {
+    output?: Array<{ type: string; content?: string }>;
+  };
+  // Pick the LAST message item — earlier ones may be intermediate
+  // "I'm going to search for X" thoughts the model produced before
+  // the tool call returned. The user only cares about the final
+  // synthesised answer.
+  const messageItems = (data.output ?? []).filter(
+    (o) => o.type === "message" && typeof o.content === "string",
+  );
+  const final = messageItems[messageItems.length - 1]?.content ?? "";
+  return final.trim();
 }
 
 main().catch((err) => {

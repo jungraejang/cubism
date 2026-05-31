@@ -166,10 +166,17 @@ export function playAudioBytes(
   });
 }
 
-export function speak(text: string): void {
-  if (typeof window === "undefined") return;
+/**
+ * Returns a promise that resolves when the utterance finishes (onend)
+ * or is cancelled / errors. Never rejects — the caller usually just
+ * wants to know "is the assistant done talking yet" so it can update
+ * UI, and a synthesis hiccup shouldn't bubble up as an unhandled
+ * promise rejection.
+ */
+export function speak(text: string): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
   const synth = window.speechSynthesis;
-  if (!synth) return;
+  if (!synth) return Promise.resolve();
   try {
     // Drop anything currently playing so back-to-back assistant
     // responses don't queue up; the user is asking now. Also cancel
@@ -188,8 +195,18 @@ export function speak(text: string): void {
     utter.rate = 0.95;
     utter.pitch = 1.05;
     utter.volume = 1;
-    synth.speak(utter);
+
+    return new Promise<void>((resolve) => {
+      // `onend` fires on natural completion, `onerror` on synth
+      // failure, and crucially neither fires after `cancel()` on
+      // some browsers — so we also resolve eagerly if the utterance
+      // never gets a chance to start.
+      utter.onend = () => resolve();
+      utter.onerror = () => resolve();
+      synth.speak(utter);
+    });
   } catch (err) {
     console.warn("[speech] speak failed:", err);
+    return Promise.resolve();
   }
 }

@@ -26,6 +26,9 @@ importers:
       '@cubism/supabase':
         specifier: workspace:*
         version: link:../../packages/supabase
+      '@next/env':
+        specifier: ^16.2.6
+        version: 16.2.6
       '@supabase/supabase-js':
         specifier: latest
         version: 2.106.2

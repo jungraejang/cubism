@@ -153,3 +153,35 @@ Four pieces need to be running on the desktop machine alongside `pnpm dev`:
 Then open the desktop control panel, pick **AI Assistant** from Modules, hit **Test** on the LM Studio, Whisper, and Piper TTS fields, and press the center macropad key (or `Space` / `Enter` on the Pi's keyboard) to talk. Press it again to stop and send.
 
 The defaults in `apps/desktop/.env.example` (`CUBISM_LMSTUDIO_URL`, `CUBISM_WHISPER_URL`, `CUBISM_WHISPER_MODEL`, `CUBISM_TTS_URL`, `CUBISM_TTS_VOICE`, `CUBISM_TTS_MODEL`, `CUBISM_AI_SYSTEM_PROMPT`, `CUBISM_AI_MAX_TURNS`) all point at the URLs above and can be overridden at runtime from the Controls panel.
+
+### Giving the assistant web search (or other MCP tools)
+
+LM Studio's MCP integration only runs inside its chat UI by default — calls to the OpenAI-compatible `/v1/chat/completions` endpoint ignore `mcp.json`. To let the assistant in this app use MCP servers (Brave Search, fetch, playwright, …):
+
+1. Configure the MCP server in LM Studio (**Program → Edit mcp.json**), e.g. for Brave:
+
+   ```json
+   {
+     "mcpServers": {
+       "brave-search": {
+         "command": "npx",
+         "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+         "env": { "BRAVE_API_KEY": "your-key-here" }
+       }
+     }
+   }
+   ```
+
+2. In LM Studio → **Settings → Local Server**:
+   - Enable **Allow calling servers from mcp.json**.
+   - Enable **Authentication** and copy the generated bearer token into `LM_STUDIO_API_KEY` in `apps/desktop/.env.local`.
+
+3. Set `CUBISM_LM_INTEGRATIONS` in `apps/desktop/.env.local` to the plugin id(s) you want active, comma-separated:
+
+   ```env
+   CUBISM_LM_INTEGRATIONS=mcp/brave-search
+   ```
+
+4. Restart `pnpm dev`. The startup log will show `mcp=mcp/brave-search` next to the LM Studio line, confirming the app is now routing through LM Studio's `/api/v1/chat` Responses-style endpoint instead of the plain OpenAI one.
+
+5. Use a model that supports tool calling (look for the hammer / "Tools" badge in LM Studio's model list). Gemma 3 / Qwen 2.5 / Llama 3.1 with tool use all work. Phrase questions naturally — "what's the latest …" or "search for …" — to nudge the model toward calling the tool.

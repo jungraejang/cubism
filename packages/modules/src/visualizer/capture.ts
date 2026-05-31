@@ -105,19 +105,55 @@ export async function startCapture(
   const timeBucket = analyser.fftSize / WAVEFORM_SAMPLE_COUNT;
 
   /*
-   * Precompute log-spaced frequency-bin ranges. With fftSize=2048 we get
-   * 1024 bins covering 0 .. sampleRate/2 Hz (linearly). Mapping bar i to
-   * roundtrip-log of bin index gives perceptually-uniform spacing.
+   * Precompute log-spaced frequency-bin ranges.
+   *
+   * With fftSize=2048 the analyser returns 1024 linear bins covering
+   * 0 .. sampleRate/2 Hz (Nyquist). Mapping our 128 bars uniformly
+   * across the entire spectrum sounds reasonable but in practice
+   * creates a "dead zone": almost no realistic audio source — music,
+   * speech, tab audio — contains meaningful energy above ~12 kHz, so
+   * the upper third of bars sits permanently at 0 and the visualizer
+   * develops a flat trailing edge that breaks symmetric shapes.
+   *
+   * Solution: confine the log mapping to a perceptually-relevant
+   * window of [FREQ_LO_HZ, FREQ_HI_HZ]. Converting Hz to bin index
+   * is `bin = freqHz * fftSize / sampleRate`, computed from the
+   * actual `ctx.sampleRate` so it adapts to whatever the platform
+   * picks (44.1 / 48 / 96 kHz, etc.).
+   *
+   * Tune the bounds if you ever target very low rumble (lower
+   * FREQ_LO_HZ) or content with crisp high-end like cymbals (raise
+   * FREQ_HI_HZ). Empirically 40 Hz → 12 kHz covers the energy
+   * envelope of practically every consumer audio source.
    */
-  const minBin = 1; // skip DC
-  const maxBin = analyser.frequencyBinCount - 1;
+  const FREQ_LO_HZ = 40;
+  const FREQ_HI_HZ = 12_000;
+  const nyquist = ctx.sampleRate / 2;
+  // `bin = freqHz * fftSize / sampleRate`. Clamp to [1, lastBin] so
+  // exotic sample rates can't crash by indexing past `rawFreq`.
+  const hzToBin = (hz: number) =>
+    Math.max(
+      1,
+      Math.min(
+        analyser.frequencyBinCount - 1,
+        (hz * analyser.fftSize) / ctx.sampleRate,
+      ),
+    );
+  const minBin = Math.floor(hzToBin(FREQ_LO_HZ));
+  // If the platform Nyquist is below our target ceiling (rare —
+  // would need an 8 kHz AudioContext) clamp to it so we never run
+  // out of bins to map.
+  const maxBin = Math.floor(hzToBin(Math.min(FREQ_HI_HZ, nyquist)));
   const freqRanges: Array<[number, number]> = [];
   for (let i = 0; i < FREQUENCY_BIN_COUNT; i++) {
     const t1 = i / FREQUENCY_BIN_COUNT;
     const t2 = (i + 1) / FREQUENCY_BIN_COUNT;
     const lo = minBin * Math.pow(maxBin / minBin, t1);
     const hi = minBin * Math.pow(maxBin / minBin, t2);
-    freqRanges.push([Math.floor(lo), Math.max(Math.floor(lo) + 1, Math.ceil(hi))]);
+    freqRanges.push([
+      Math.floor(lo),
+      Math.max(Math.floor(lo) + 1, Math.ceil(hi)),
+    ]);
   }
 
   let stopped = false;

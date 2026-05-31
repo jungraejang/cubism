@@ -15,8 +15,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   let url: string;
+  let kind: "lmStudio" | "whisper" | "tts" | undefined;
   try {
-    const body = (await request.json()) as { url?: unknown };
+    const body = (await request.json()) as {
+      url?: unknown;
+      kind?: unknown;
+    };
     if (typeof body.url !== "string" || !body.url) {
       return NextResponse.json(
         { ok: false, error: "Missing 'url' field." },
@@ -24,6 +28,13 @@ export async function POST(request: Request) {
       );
     }
     url = body.url;
+    if (
+      body.kind === "lmStudio" ||
+      body.kind === "whisper" ||
+      body.kind === "tts"
+    ) {
+      kind = body.kind;
+    }
   } catch {
     return NextResponse.json(
       { ok: false, error: "Invalid JSON body." },
@@ -33,6 +44,17 @@ export async function POST(request: Request) {
 
   const probe = url.replace(/\/$/, "") + "/models";
 
+  // Attach LM Studio's bearer token when probing it — once the local
+  // server has auth enabled (needed for MCP / Brave Search), an
+  // unauthenticated GET /models returns 401 and the Test button
+  // would always read as failing even when the server is up.
+  // Read the env directly so the secret never reaches the browser.
+  const headers: Record<string, string> = {};
+  if (kind === "lmStudio") {
+    const key = process.env.LM_STUDIO_API_KEY;
+    if (key) headers.authorization = `Bearer ${key}`;
+  }
+
   // Cap the upstream wait so a black-holed host doesn't lock the
   // browser tab. 5s is generous for a local-network probe.
   const controller = new AbortController();
@@ -41,6 +63,7 @@ export async function POST(request: Request) {
   try {
     const res = await fetch(probe, {
       method: "GET",
+      headers,
       signal: controller.signal,
     });
     clearTimeout(timeout);

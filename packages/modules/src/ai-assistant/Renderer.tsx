@@ -49,14 +49,29 @@ type UiState = "idle" | "recording" | "processing" | "speaking" | "error";
  * Transitions are driven by:
  *   - keyboard (Space/Enter) → start/stop recording
  *   - server (ai:state/transcript/response/error) → enter/exit processing
- *   - speaking → idle is timed (4s) since the desktop owns the speech
- *     synthesis and we don't get an onend signal here. 4s feels right for
- *     a 1–3 sentence response at default speech rate; it doesn't matter
- *     if it's slightly off because pressing Space immediately starts a
- *     new recording either way.
+ *   - speaking → idle is normally driven by `ai:speech-end` from the
+ *     desktop (which actually plays the TTS audio and knows exactly
+ *     when it stops). We additionally keep a length-based fallback
+ *     timer so the response can't get stuck on screen if the desktop
+ *     crashes mid-clip or the renderer somehow misses the event.
  */
-const SPEAKING_TIMEOUT_MS = 4000;
 const ERROR_TIMEOUT_MS = 4000;
+
+/**
+ * Fallback display duration in milliseconds, derived from response
+ * length so a long answer doesn't disappear before the user has had
+ * a chance to read it (or before the TTS audio is even halfway
+ * through). Tuned around ~180 WPM speech rate plus a 2 s "let it
+ * settle" tail. Clamped to a sane window so a one-word answer still
+ * lingers a beat, and a runaway 300-word reply still eventually
+ * clears.
+ */
+function computeSpeakingTimeoutMs(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length || 1;
+  const estimatedSpeechMs = words * 380;
+  const padded = estimatedSpeechMs + 2000;
+  return Math.max(6000, Math.min(45000, padded));
+}
 
 export function AiAssistantRenderer({
   config,
@@ -188,6 +203,16 @@ export function AiAssistantRenderer({
       setUiState("error");
     });
 
+    // Desktop says the TTS audio actually finished playing — exit the
+    // "speaking" UI now instead of waiting for the heuristic fallback
+    // timer. Guard by requestId in case a stale event from an earlier
+    // turn arrives after the user has started a new prompt.
+    socket.on("ai:speech-end", (payload) => {
+      if (payload.deviceId !== deviceId) return;
+      if (payload.requestId !== currentRequestIdRef.current) return;
+      if (uiStateRef.current === "speaking") setUiState("idle");
+    });
+
     return () => {
       socket.removeAllListeners();
       socket.disconnect();
@@ -195,16 +220,22 @@ export function AiAssistantRenderer({
     };
   }, [userId, deviceId]);
 
-  // Auto-return from speaking/error → idle.
+  // Auto-return from speaking/error → idle. For `speaking` this is a
+  // SAFETY NET only — the real signal is `ai:speech-end` from the
+  // desktop. The fallback timer scales with response length so a long
+  // answer doesn't vanish prematurely if the end event is ever missed.
   useEffect(() => {
     if (uiState !== "speaking" && uiState !== "error") return;
-    const ms = uiState === "speaking" ? SPEAKING_TIMEOUT_MS : ERROR_TIMEOUT_MS;
+    const ms =
+      uiState === "speaking"
+        ? computeSpeakingTimeoutMs(response)
+        : ERROR_TIMEOUT_MS;
     const id = window.setTimeout(() => {
       setUiState("idle");
       if (uiState === "error") setErrorMsg("");
     }, ms);
     return () => window.clearTimeout(id);
-  }, [uiState]);
+  }, [uiState, response]);
 
   // Live mic level while recording — drives the meter ring.
   useEffect(() => {
