@@ -353,15 +353,30 @@ export function AiAssistantRenderer({
       >
         <div className="flex w-[80vmin] flex-col items-center gap-6 text-center">
           {/*
-           * Status indicator — the big visual cue. Each UI state paints
-           * a different mic-frame so the user knows whether the system
-           * is listening, thinking, or speaking from across the room.
+           * Status indicator — the big visual cue while we're idle /
+           * recording / processing. We hide it during `speaking` so
+           * the assistant's response gets the user's full attention
+           * (and isn't competing visually with a static mic icon).
+           * AnimatePresence handles the fade out / fade in either
+           * side of the speaking state.
            */}
-          <StatusOrb
-            state={uiState}
-            accentColor={accentColor}
-            level={micLevel}
-          />
+          <AnimatePresence>
+            {uiState !== "speaking" ? (
+              <motion.div
+                key="status-orb"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.4, ease: "easeInOut" }}
+              >
+                <StatusOrb
+                  state={uiState}
+                  accentColor={accentColor}
+                  level={micLevel}
+                />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
           {/*
            * Text block. AnimatePresence with mode="wait" so the

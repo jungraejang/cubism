@@ -261,14 +261,12 @@ async function main() {
         lmStudioUrl: payload.config?.lmStudioUrl || AI_DEFAULTS.lmStudioUrl,
         llmModel: payload.config?.llmModel || AI_DEFAULTS.llmModel,
         whisperUrl: payload.config?.whisperUrl || AI_DEFAULTS.whisperUrl,
-        whisperModel:
-          payload.config?.whisperModel || AI_DEFAULTS.whisperModel,
+        whisperModel: payload.config?.whisperModel || AI_DEFAULTS.whisperModel,
         // Empty string is a meaningful value here ("auto-detect"), so
         // use a nullish fallback instead of `||`.
         whisperLanguage:
           payload.config?.whisperLanguage ?? AI_DEFAULTS.whisperLanguage,
-        systemPrompt:
-          payload.config?.systemPrompt || AI_DEFAULTS.systemPrompt,
+        systemPrompt: payload.config?.systemPrompt || AI_DEFAULTS.systemPrompt,
         maxTurns: payload.config?.maxTurns || AI_DEFAULTS.maxTurns,
         // `ttsEnabled` is a boolean so the truthy/`||` shortcut would
         // ignore an explicit `false` from the client; check for
@@ -512,9 +510,7 @@ async function transcribeAudio(opts: {
 }): Promise<string> {
   const { audio, mime, whisperUrl, whisperModel, whisperLanguage } = opts;
   const bytes =
-    audio instanceof Uint8Array
-      ? audio
-      : new Uint8Array(audio as ArrayBuffer);
+    audio instanceof Uint8Array ? audio : new Uint8Array(audio as ArrayBuffer);
   // Use the bytes' underlying buffer directly — Blob accepts ArrayBufferView
   // (Uint8Array) but TS BlobPart inference is happier with a fresh
   // ArrayBuffer slice.
