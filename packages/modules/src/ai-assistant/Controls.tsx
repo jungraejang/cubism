@@ -252,7 +252,7 @@ export function AiAssistantControls({
             className="rounded-lg bg-zinc-800 px-3 py-2 font-mono text-white"
             value={llmModel}
             onChange={(e) => patch({ llmModel: e.target.value.trim() })}
-            placeholder="e.g. qwen/qwen3.5-9b (or empty → uses CUBISM_LLM_MODEL)"
+            placeholder="e.g. google/gemma-4-e2b(or empty → uses CUBISM_LLM_MODEL)"
             spellCheck={false}
           />
         </label>
@@ -332,8 +332,8 @@ export function AiAssistantControls({
               <option value="ar">Arabic (العربية)</option>
             </select>
             <span className="text-xs text-zinc-500">
-              Skip Whisper&apos;s detection step — faster and more
-              accurate on short clips.
+              Skip Whisper&apos;s detection step — faster and more accurate on
+              short clips.
             </span>
           </label>
         </div>
@@ -353,9 +353,9 @@ export function AiAssistantControls({
               Piper TTS (Voice)
             </h3>
             <p className="text-xs text-zinc-500">
-              OpenAI-compatible /v1/audio/speech endpoint. Recommended:
-              OpenedAI Speech (Piper). Disable to fall back to the desktop
-              browser&apos;s built-in voice.
+              OpenAI-compatible /v1/audio/speech endpoint. Recommended: OpenedAI
+              Speech (Piper). Disable to fall back to the desktop browser&apos;s
+              built-in voice.
             </p>
           </div>
           <label className="flex shrink-0 items-center gap-2 text-sm text-zinc-300">
@@ -408,8 +408,8 @@ export function AiAssistantControls({
               disabled={!ttsEnabled}
             />
             <span className="text-xs text-zinc-500">
-              OpenAI alias (alloy, echo, fable, onyx, nova, shimmer) or a
-              Piper voice id like en_US-amy-medium.
+              OpenAI alias (alloy, echo, fable, onyx, nova, shimmer) or a Piper
+              voice id like en_US-amy-medium.
             </span>
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -443,8 +443,7 @@ export function AiAssistantControls({
           onChange={(e) => patch({ systemPrompt: e.target.value })}
         />
         <span className="text-xs text-zinc-500">
-          Keep it short — responses are read aloud and shown on a small
-          display.
+          Keep it short — responses are read aloud and shown on a small display.
         </span>
       </label>
 
@@ -571,17 +570,15 @@ export function AiAssistantControls({
                 <span className="text-zinc-100">{last.response}</span>
               </p>
             ) : null}
-            {last.error ? (
-              <p className="text-red-400">{last.error}</p>
-            ) : null}
+            {last.error ? <p className="text-red-400">{last.error}</p> : null}
             {lastAt ? (
               <p className="text-xs text-zinc-500">at {lastAt}</p>
             ) : null}
           </div>
         ) : (
           <p className="mt-2 text-xs text-zinc-500">
-            Press the center key on the Pi to start talking. Results will
-            show up here.
+            Press the center key on the Pi to start talking. Results will show
+            up here.
           </p>
         )}
       </section>

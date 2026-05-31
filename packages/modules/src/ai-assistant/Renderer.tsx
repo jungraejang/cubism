@@ -353,36 +353,70 @@ export function AiAssistantRenderer({
       >
         <div className="flex w-[80vmin] flex-col items-center gap-6 text-center">
           {/*
-           * Status indicator — the big visual cue while we're idle /
-           * recording / processing. We hide it during `speaking` so
-           * the assistant's response gets the user's full attention
-           * (and isn't competing visually with a static mic icon).
-           * AnimatePresence handles the fade out / fade in either
-           * side of the speaking state.
+           * Stage — a fixed-size region that always holds *either* the
+           * mic orb OR the assistant's response text, occupying the
+           * exact same coordinates. AnimatePresence cross-fades the
+           * two without either of them shifting position, which is
+           * what makes the handoff feel smooth instead of "things
+           * snap around when the AI starts talking".
+           *
+           * Both layers are absolutely positioned inside the stage so
+           * neither one's layout affects the other's. The stage's
+           * min-h reserves the orb's height, but a long response can
+           * grow past it (overflow vertically) without pushing the
+           * labels below — by the time we're speaking, we don't show
+           * any labels anyway.
            */}
-          <AnimatePresence>
-            {uiState !== "speaking" ? (
-              <motion.div
-                key="status-orb"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ duration: 0.4, ease: "easeInOut" }}
-              >
-                <StatusOrb
-                  state={uiState}
-                  accentColor={accentColor}
-                  level={micLevel}
-                />
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+          <div className="relative flex min-h-[28vmin] w-full items-center justify-center">
+            <AnimatePresence initial={false}>
+              {uiState !== "speaking" ? (
+                <motion.div
+                  key="stage-orb"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.6, ease: "easeInOut" }}
+                  className="absolute inset-0 flex items-center justify-center"
+                >
+                  <StatusOrb
+                    state={uiState}
+                    accentColor={accentColor}
+                    level={micLevel}
+                  />
+                </motion.div>
+              ) : (
+                <motion.p
+                  key="stage-response"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.6, ease: "easeInOut" }}
+                  className="absolute inset-0 flex items-center justify-center px-[4vmin] text-[4vmin] leading-snug"
+                  style={{
+                    color: responseColor,
+                    textShadow: `0 0 30px ${responseColor}`,
+                  }}
+                >
+                  {response}
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/*
-           * Text block. AnimatePresence with mode="wait" so the
-           * transcript→response handoff reads as one fade-through, not
-           * two stacked elements.
+           * Secondary text below the stage. We reserve a fixed slot
+           * (min-h-[8vmin]) for this region so the column's total
+           * height stays constant whether or not a label is being
+           * rendered. Without this, the column would grow/shrink as
+           * the label appears/disappears — and because the column is
+           * vertically centered in the viewport, that height delta
+           * pushes the stage (and therefore the mic orb) up or down,
+           * which manifests as the orb "sliding in from the top"
+           * when the response ends and "Press center to talk" mounts.
+           * Reserving the slot pins the orb's screen position to the
+           * same coordinates across every state.
            */}
+          <div className="flex min-h-[8vmin] w-full items-center justify-center">
           <AnimatePresence mode="wait">
             {uiState === "idle" ? (
               <motion.p
@@ -429,33 +463,7 @@ export function AiAssistantRenderer({
                   Thinking…
                 </p>
               </motion.div>
-            ) : uiState === "speaking" ? (
-              <motion.div
-                key="speaking"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="flex flex-col items-center gap-3"
-              >
-                {transcript ? (
-                  <p
-                    className="text-[2.2vmin] italic"
-                    style={{ color: transcriptColor }}
-                  >
-                    “{transcript}”
-                  </p>
-                ) : null}
-                <p
-                  className="text-[4vmin] leading-snug"
-                  style={{
-                    color: responseColor,
-                    textShadow: `0 0 30px ${responseColor}`,
-                  }}
-                >
-                  {response}
-                </p>
-              </motion.div>
-            ) : (
+            ) : uiState === "error" ? (
               <motion.p
                 key="error"
                 initial={{ opacity: 0, y: 8 }}
@@ -465,8 +473,9 @@ export function AiAssistantRenderer({
               >
                 {errorMsg || "Something went wrong."}
               </motion.p>
-            )}
+            ) : null}
           </AnimatePresence>
+          </div>
         </div>
       </motion.div>
     </div>
