@@ -155,8 +155,8 @@ export function AsciiAquariumControls({
         <span>
           Performance mode{" "}
           <span className="text-xs text-zinc-500">
-            (recommended for Raspberry Pi — caps DPR to 1 and throttles
-            animation to ~30 fps)
+            (recommended for Raspberry Pi — caps DPR, lowers frame rate, and
+            simplifies fish/seaweed animation)
           </span>
         </span>
       </label>

@@ -32,10 +32,9 @@ export const AsciiAquariumConfigSchema = z.object({
   /** Hex color for bubble glyphs. */
   bubbleColor: z.string().optional(),
   /**
-   * Pi 4-friendly mode: caps the canvas DPR at 1 and throttles the
-   * `useFrame` loop to ~30 fps. Defaults to `true` since the Pi is the
-   * primary target — desktop previews look fine in perf mode too, just a
-   * touch less smooth.
+   * Pi 4-friendly mode: caps DPR, lowers the aquarium frame rate, and
+   * simplifies the most expensive ASCII DOM animations. Defaults to `true`
+   * since the Pi is the primary target.
    */
   performanceMode: z.boolean().optional(),
   ...OrientationFields,

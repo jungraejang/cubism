@@ -39,7 +39,7 @@ const PIXEL_SHIFT_DURATION_S = 2;
  * fixed low frame rate. This caps not just our own useFrame callbacks, but
  * also drei Html's projection work, which is the long-running Pi cost.
  */
-const PERFORMANCE_FRAME_INTERVAL_MS = 50;
+const PERFORMANCE_FRAME_INTERVAL_MS = 66;
 
 /**
  * Aquarium volume bounds in Three.js world units.
@@ -257,7 +257,7 @@ export function AsciiAquariumRenderer({
             // is mostly cosmetic for any future 3D meshes we add.
             gl={{
               antialias: !performanceMode,
-              alpha: true,
+              alpha: false,
               // The Pi's GPU is the bottleneck and the scene is almost
               // entirely DOM overlays — ask for the low-power path and
               // don't bail out on the Pi's "major performance caveat".
@@ -523,6 +523,7 @@ function Fish({
   performanceMode: boolean;
 }) {
   const groupRef = useRef<Group>(null);
+  const preRef = useRef<HTMLPreElement>(null);
   // One span per body character. We mutate each span's CSS transform
   // (vertical offset) and textContent directly every frame — far
   // cheaper than re-rendering React for a per-character animation.
@@ -561,7 +562,7 @@ function Fish({
 
   const waveAmplitudePx = baseFontSize * SWIM_WAVE_AMPLITUDE_FACTOR;
 
-  const frameInterval = performanceMode ? 1 / 30 : 0;
+  const frameInterval = performanceMode ? PERFORMANCE_FRAME_INTERVAL_MS / 1000 : 0;
 
   useFrame((state, deltaSec) => {
     const s = stateRef.current;
@@ -691,24 +692,31 @@ function Fish({
       s.wiggleAccumMs -= WIGGLE_PERIOD_MS;
       s.showFrameB = !s.showFrameB;
       const frame = s.showFrameB ? frameBChars : frameAChars;
-      for (let i = 0; i < charRefs.current.length; i++) {
-        const span = charRefs.current[i];
-        if (span) span.textContent = frame[i] ?? "";
+      if (performanceMode) {
+        if (preRef.current) preRef.current.textContent = frame.join("");
+      } else {
+        for (let i = 0; i < charRefs.current.length; i++) {
+          const span = charRefs.current[i];
+          if (span) span.textContent = frame[i] ?? "";
+        }
       }
     }
 
-    // Body undulation: a sine wave travels along the body so the fish
-    // ripples like a swimming snake. The phase offset per character
-    // (`i * PHASE_PER_CHAR`) is what makes the hump travel head-to-tail
-    // instead of every character bobbing in unison.
-    const waveTime = state.clock.elapsedTime * SWIM_WAVE_ANGULAR_SPEED;
-    for (let i = 0; i < charRefs.current.length; i++) {
-      const span = charRefs.current[i];
-      if (!span) continue;
-      const offset =
-        waveAmplitudePx *
-        Math.sin(waveTime + params.phaseMs - i * SWIM_WAVE_PHASE_PER_CHAR);
-      span.style.transform = `translateY(${offset.toFixed(2)}px)`;
+    if (!performanceMode) {
+      // Body undulation: a sine wave travels along the body so the fish
+      // ripples like a swimming snake. The phase offset per character
+      // (`i * PHASE_PER_CHAR`) is what makes the hump travel head-to-tail
+      // instead of every character bobbing in unison. In performance mode
+      // this is skipped so each fish stays a single cheap text node.
+      const waveTime = state.clock.elapsedTime * SWIM_WAVE_ANGULAR_SPEED;
+      for (let i = 0; i < charRefs.current.length; i++) {
+        const span = charRefs.current[i];
+        if (!span) continue;
+        const offset =
+          waveAmplitudePx *
+          Math.sin(waveTime + params.phaseMs - i * SWIM_WAVE_PHASE_PER_CHAR);
+        span.style.transform = `translateY(${offset.toFixed(2)}px)`;
+      }
     }
 
     const g = groupRef.current;
@@ -759,6 +767,7 @@ function Fish({
             }}
           >
             <pre
+              ref={preRef}
               style={{
                 margin: 0,
                 fontFamily: MONO_FONT,
@@ -770,19 +779,21 @@ function Fish({
                 userSelect: "none",
               }}
             >
-              {frameAChars.map((ch, i) => (
-                <span
-                  key={i}
-                  ref={(el) => {
-                    charRefs.current[i] = el;
-                  }}
-                  // inline-block lets each glyph take an independent
-                  // translateY while monospace keeps columns aligned.
-                  style={{ display: "inline-block", whiteSpace: "pre" }}
-                >
-                  {ch}
-                </span>
-              ))}
+              {performanceMode
+                ? species.a
+                : frameAChars.map((ch, i) => (
+                    <span
+                      key={i}
+                      ref={(el) => {
+                        charRefs.current[i] = el;
+                      }}
+                      // inline-block lets each glyph take an independent
+                      // translateY while monospace keeps columns aligned.
+                      style={{ display: "inline-block", whiteSpace: "pre" }}
+                    >
+                      {ch}
+                    </span>
+                  ))}
             </pre>
           </div>
         </div>
@@ -841,7 +852,7 @@ function Seaweed({
 
   // Slower throttle for seaweed — the human eye can't tell the
   // difference between 20 and 60 fps on this kind of gentle sway.
-  const frameInterval = performanceMode ? 1 / 15 : 1 / 30;
+  const frameInterval = performanceMode ? PERFORMANCE_FRAME_INTERVAL_MS / 1000 : 1 / 30;
   const accumRef = useRef(0);
 
   useFrame((state, deltaSec) => {
@@ -858,6 +869,8 @@ function Seaweed({
     const t = state.clock.elapsedTime * params.speedMul + params.phase;
     const skewDeg = Math.sin(t) * 6;
     pre.style.transform = `skewX(${skewDeg}deg)`;
+
+    if (performanceMode) return;
 
     // Per-row ripple traveling up the stalk. Amplitude scales from 0 at
     // the base to full at the tip so the root stays planted.
@@ -902,22 +915,24 @@ function Seaweed({
             transition: "transform 80ms linear",
           }}
         >
-          {rows.map((row, i) => (
-            <div
-              key={i}
-              ref={(el) => {
-                rowRefs.current[i] = el;
-              }}
-              // Smooth the per-row offset between throttled frames so the
-              // ripple stays fluid even at 15fps in performance mode.
-              style={{
-                whiteSpace: "pre",
-                transition: "transform 120ms linear",
-              }}
-            >
-              {row.length > 0 ? row : " "}
-            </div>
-          ))}
+          {performanceMode
+            ? stalk
+            : rows.map((row, i) => (
+                <div
+                  key={i}
+                  ref={(el) => {
+                    rowRefs.current[i] = el;
+                  }}
+                  // Smooth the per-row offset between throttled frames so the
+                  // ripple stays fluid even at 15fps in performance mode.
+                  style={{
+                    whiteSpace: "pre",
+                    transition: "transform 120ms linear",
+                  }}
+                >
+                  {row.length > 0 ? row : " "}
+                </div>
+              ))}
         </pre>
       </Html>
     </group>
