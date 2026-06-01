@@ -135,19 +135,39 @@ export function AsciiAquariumRenderer({
   const dpr = performanceMode ? 1 : Math.min(2, window.devicePixelRatio || 1);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-black">
+    /*
+     * Wrapper pattern matches the visualizer / clock modules
+     * (`relative flex h-screen w-screen items-center justify-center`)
+     * rather than `absolute inset-0` to avoid a centering bug that
+     * surfaces when the renderer page's carousel transition leaves a
+     * `transform-style: preserve-3d` context on our ancestors. In that
+     * 3D context, scaleX(-1) on an absolute-positioned div can shift
+     * the visible content horizontally — the aquarium ends up biased
+     * to one side with content escaping past the canvas edge.
+     *
+     * `transform-style: flat` on the orientation div re-establishes a
+     * 2D rendering context so our scaleX/scaleY flips behave as pure
+     * 2D mirror operations. The `overflow-hidden` on the same div
+     * clips any drei `<Html>` element whose 3D projection lands
+     * outside the canvas — without it, fish near the world bounds
+     * could spill into pixel space past the visible viewport.
+     */
+    <div
+      className="relative flex h-screen w-screen items-center justify-center overflow-hidden"
+      style={{ background: backgroundColor }}
+    >
       <motion.div
         initial={false}
         animate={{ x: pixelShift.x, y: pixelShift.y }}
         transition={{ duration: PIXEL_SHIFT_DURATION_S, ease: "easeInOut" }}
-        className="absolute inset-0"
+        className="relative flex h-full w-full items-center justify-center"
       >
         <motion.div
           initial={false}
           animate={{ rotate: rotation, scaleX, scaleY }}
           transition={{ duration: 0.6, ease: "easeInOut" }}
-          className="absolute inset-0"
-          style={{ background: backgroundColor }}
+          className="relative h-full w-full overflow-hidden"
+          style={{ background: backgroundColor, transformStyle: "flat" }}
         >
           <Canvas
             dpr={dpr}
@@ -156,7 +176,11 @@ export function AsciiAquariumRenderer({
             // rasterizer (HTML `<pre>`), so the GL antialias setting
             // is mostly cosmetic for any future 3D meshes we add.
             gl={{ antialias: !performanceMode, alpha: true }}
-            style={{ background: backgroundColor }}
+            style={{
+              background: backgroundColor,
+              width: "100%",
+              height: "100%",
+            }}
           >
             <Scene
               fishCount={fishCount}
