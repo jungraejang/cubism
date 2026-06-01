@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
 import { modules, type AnyCubismModule } from "@cubism/modules";
@@ -10,46 +10,11 @@ type ActiveModule = {
   config: unknown;
 };
 
-function debugRendererCarousel(
-  runId: string,
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-) {
-  // #region agent log
-  fetch("/api/debug-log", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: "70f298",
-      runId,
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-}
-
-function rectData(rect: DOMRect | undefined) {
-  if (!rect) return null;
-  return {
-    left: Math.round(rect.left),
-    top: Math.round(rect.top),
-    width: Math.round(rect.width),
-    height: Math.round(rect.height),
-    centerX: Math.round(rect.left + rect.width / 2),
-    centerY: Math.round(rect.top + rect.height / 2),
-  };
-}
-
 export default function RendererHomePage() {
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
   const [active, setActive] = useState<ActiveModule | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
   /**
    * Latest stream payload for the currently active module. Stored as state
    * (not just a ref) so module Renderers re-render when new frames arrive.
@@ -57,7 +22,6 @@ export default function RendererHomePage() {
    * discarded since they'd be invisible anyway.
    */
   const [streamData, setStreamData] = useState<unknown>(undefined);
-  const carouselSlotRef = useRef<HTMLDivElement>(null);
   /**
    * The active module id mirrored into a ref so the high-frequency
    * `module:stream` handler can filter without re-binding on every state
@@ -67,6 +31,23 @@ export default function RendererHomePage() {
 
   const deviceId = process.env.NEXT_PUBLIC_DEVICE_ID ?? "pi-holo-001";
   const userId = process.env.NEXT_PUBLIC_USER_ID ?? "demo-user";
+
+  const scheduleCanvasResize = useCallback(() => {
+    if (resizeFrameRef.current !== null) return;
+
+    resizeFrameRef.current = window.requestAnimationFrame(() => {
+      resizeFrameRef.current = null;
+      window.dispatchEvent(new Event("resize"));
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (resizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     activeIdRef.current = active?.module.manifest.id ?? null;
@@ -90,22 +71,6 @@ export default function RendererHomePage() {
     });
 
     socket.on("module:display", (payload) => {
-      debugRendererCarousel(
-        "post-fix-resize-1",
-        "H6",
-        "apps/renderer/src/app/page.tsx:module-display",
-        "Renderer received module display command",
-        {
-          previousModuleId: activeIdRef.current,
-          nextModuleId: payload.moduleId,
-          window: {
-            innerWidth: window.innerWidth,
-            innerHeight: window.innerHeight,
-            devicePixelRatio: window.devicePixelRatio,
-          },
-        },
-      );
-
       const mod = modules.find((m) => m.manifest.id === payload.moduleId);
       if (!mod) {
         console.warn(
@@ -270,45 +235,20 @@ export default function RendererHomePage() {
       <AnimatePresence>
         {ActiveRenderer && active ? (
           <motion.div
-            ref={carouselSlotRef}
             key={active.module.manifest.id}
             initial={CAROUSEL.initial}
             animate={CAROUSEL.animate}
             exit={CAROUSEL.exit}
             transition={CAROUSEL.transition}
-            onAnimationStart={() => {
-              const slot = carouselSlotRef.current;
-              debugRendererCarousel(
-                "post-fix-resize-1",
-                "H6,H7",
-                "apps/renderer/src/app/page.tsx:carousel-start",
-                "Carousel animation started",
-                {
-                  moduleId: active.module.manifest.id,
-                  slotRect: rectData(slot?.getBoundingClientRect()),
-                  slotTransform: slot
-                    ? window.getComputedStyle(slot).transform
-                    : null,
-                },
-              );
-            }}
+            onAnimationStart={scheduleCanvasResize}
+            onUpdate={scheduleCanvasResize}
             onAnimationComplete={() => {
-              const slot = carouselSlotRef.current;
+              // R3F/Drei Html measures Canvas size from DOM geometry. During
+              // the carousel transform that geometry changes continuously, so
+              // resize throughout the transition and once more at rest. This
+              // prevents Canvas overlays from snapping from a stale entry
+              // measurement to the final centered layout.
               window.dispatchEvent(new Event("resize"));
-              debugRendererCarousel(
-                "post-fix-resize-1",
-                "H6,H7",
-                "apps/renderer/src/app/page.tsx:carousel-complete",
-                "Carousel animation completed",
-                {
-                  moduleId: active.module.manifest.id,
-                  dispatchedResize: true,
-                  slotRect: rectData(slot?.getBoundingClientRect()),
-                  slotTransform: slot
-                    ? window.getComputedStyle(slot).transform
-                    : null,
-                },
-              );
             }}
             className="absolute inset-0"
           >

@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
-import { Vector3, type Group } from "three";
+import type { Group } from "three";
 import type { RendererProps } from "../types";
 import {
   DEFAULT_BACKGROUND_COLOR,
@@ -80,44 +80,6 @@ const DISTANCE_FACTOR = 12;
 const MONO_FONT =
   'ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace';
 
-function debugAquarium(
-  runId: string,
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-) {
-  const payload = {
-    sessionId: "70f298",
-    runId,
-    hypothesisId,
-    location,
-    message,
-    data,
-    timestamp: Date.now(),
-  };
-
-  // #region agent log
-  fetch("/api/debug-log", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-  // #endregion
-}
-
-function rectData(rect: DOMRect | undefined) {
-  if (!rect) return null;
-  return {
-    left: Math.round(rect.left),
-    top: Math.round(rect.top),
-    width: Math.round(rect.width),
-    height: Math.round(rect.height),
-    centerX: Math.round(rect.left + rect.width / 2),
-    centerY: Math.round(rect.top + rect.height / 2),
-  };
-}
-
 /**
  * Top-level Renderer. Wrapper pattern matches every other module:
  *
@@ -131,8 +93,6 @@ function rectData(rect: DOMRect | undefined) {
 export function AsciiAquariumRenderer({
   config,
 }: RendererProps<AsciiAquariumConfig>) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
   const rotation = config.rotation ?? 0;
   const scaleX = config.flipHorizontal ? -1 : 1;
   const scaleY = config.flipVertical ? -1 : 1;
@@ -174,73 +134,8 @@ export function AsciiAquariumRenderer({
   // would otherwise allocate a 2x or 3x backing store.
   const dpr = performanceMode ? 1 : Math.min(2, window.devicePixelRatio || 1);
 
-  useEffect(() => {
-    let raf = 0;
-    const startedAt = performance.now();
-    const sampleMarksMs = [0, 300, 700, 1_000, 1_400];
-    const sampled = new Set<number>();
-
-    const sample = () => {
-      const elapsedMs = performance.now() - startedAt;
-      const mark = sampleMarksMs.find(
-        (candidate) => elapsedMs >= candidate && !sampled.has(candidate),
-      );
-
-      if (mark === undefined) {
-        if (sampled.size < sampleMarksMs.length) {
-          raf = window.requestAnimationFrame(sample);
-        }
-        return;
-      }
-
-      sampled.add(mark);
-      const root = rootRef.current;
-      const stage = stageRef.current;
-      const canvas = stage?.querySelector("canvas") ?? undefined;
-      const htmlNodes = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-aquarium-html]"),
-      ).map((node) => ({
-        kind: node.dataset.aquariumHtml,
-        text: node.textContent?.replace(/\s+/g, " ").trim().slice(0, 24),
-        rect: rectData(node.getBoundingClientRect()),
-      }));
-
-      debugAquarium(
-        "post-fix-resize-1",
-        "H1,H3,H4,H5",
-        "ascii-aquarium/Renderer.tsx:top-level-layout",
-        "Aquarium DOM layout after paint",
-        {
-          elapsedMs: Math.round(elapsedMs),
-          sampleMarkMs: mark,
-          innerWidth: window.innerWidth,
-          innerHeight: window.innerHeight,
-          devicePixelRatio: window.devicePixelRatio,
-          rotation,
-          scaleX,
-          scaleY,
-          rootRect: rectData(root?.getBoundingClientRect()),
-          stageRect: rectData(stage?.getBoundingClientRect()),
-          canvasRect: rectData(canvas?.getBoundingClientRect()),
-          stageComputedTransform: stage
-            ? window.getComputedStyle(stage).transform
-            : null,
-          htmlNodes,
-        },
-      );
-
-      if (sampled.size < sampleMarksMs.length) {
-        raf = window.requestAnimationFrame(sample);
-      }
-    };
-
-    raf = window.requestAnimationFrame(sample);
-    return () => window.cancelAnimationFrame(raf);
-  }, [rotation, scaleX, scaleY, fishCount, seaweedCount, bubblePoolSize]);
-
   return (
     <div
-      ref={rootRef}
       className="relative flex h-screen w-screen items-center justify-center overflow-hidden"
       style={{ background: backgroundColor }}
     >
@@ -257,7 +152,6 @@ export function AsciiAquariumRenderer({
         className="relative flex h-full w-full items-center justify-center"
       >
         <motion.div
-          ref={stageRef}
           initial={false}
           animate={{ rotate: rotation, scaleX, scaleY }}
           transition={{ duration: 0.6, ease: "easeInOut" }}
@@ -335,38 +229,6 @@ function Scene({
     () => buildBubbleParams(bubblePoolSize),
     [bubblePoolSize],
   );
-  const { camera, size, viewport } = useThree();
-
-  useEffect(() => {
-    const project = (x: number, y: number, z: number) => {
-      const point = new Vector3(x, y, z).project(camera);
-      return {
-        x: Math.round((point.x * 0.5 + 0.5) * size.width),
-        y: Math.round((-point.y * 0.5 + 0.5) * size.height),
-      };
-    };
-
-    debugAquarium(
-      "post-fix-resize-1",
-      "H2,H5",
-      "ascii-aquarium/Renderer.tsx:Scene",
-      "R3F camera projection and generated world positions",
-      {
-        size,
-        viewport,
-        worldCenterProjectsTo: project(0, 0, 0),
-        worldBoundsProjectTo: {
-          left: project(BOUND_MIN_X, 0, 0),
-          right: project(BOUND_MAX_X, 0, 0),
-          bottom: project(0, BOUND_MIN_Y, 0),
-          top: project(0, BOUND_MAX_Y, 0),
-        },
-        fishInitialX: fishParams.map((p) => Number(p.initial.x.toFixed(2))),
-        seaweedX: seaweedParams.map((p) => Number(p.rootX.toFixed(2))),
-        bubbleInitialX: bubbleParams.map((p) => Number(p.initial.x.toFixed(2))),
-      },
-    );
-  }, [camera, size, viewport, fishParams, seaweedParams, bubbleParams]);
 
   return (
     <>
@@ -570,7 +432,6 @@ function Fish({
         style={{ pointerEvents: "none" }}
       >
         <div
-          data-aquarium-html="fish"
           ref={facingRef}
           style={{
             // Initial facing applied here so the first paint matches
@@ -671,7 +532,6 @@ function Seaweed({
         style={{ pointerEvents: "none" }}
       >
         <pre
-          data-aquarium-html="seaweed"
           ref={preRef}
           style={{
             margin: 0,
@@ -787,7 +647,6 @@ function Bubble({
         style={{ pointerEvents: "none" }}
       >
         <pre
-          data-aquarium-html="bubble"
           style={{
             margin: 0,
             fontFamily: MONO_FONT,
