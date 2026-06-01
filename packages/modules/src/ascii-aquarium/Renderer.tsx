@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import type { Group } from "three";
 import type { RendererProps } from "../types";
@@ -247,7 +247,15 @@ export function AsciiAquariumRenderer({
             // Antialiasing on text is handled by the browser's font
             // rasterizer (HTML `<pre>`), so the GL antialias setting
             // is mostly cosmetic for any future 3D meshes we add.
-            gl={{ antialias: !performanceMode, alpha: true }}
+            gl={{
+              antialias: !performanceMode,
+              alpha: true,
+              // The Pi's GPU is the bottleneck and the scene is almost
+              // entirely DOM overlays — ask for the low-power path and
+              // don't bail out on the Pi's "major performance caveat".
+              powerPreference: "low-power",
+              failIfMajorPerformanceCaveat: false,
+            }}
             style={{
               background: backgroundColor,
               position: "absolute",
@@ -314,6 +322,7 @@ function Scene({
 
   return (
     <>
+      <WebGLContextGuard />
       <ambientLight intensity={1} />
 
       {seaweedParams.map((params, i) => (
@@ -346,6 +355,58 @@ function Scene({
       ))}
     </>
   );
+}
+
+/**
+ * Keeps the aquarium alive across WebGL context loss — the #1 cause of a
+ * "ran fine, then froze" on Raspberry Pi. The Pi's V3D driver drops the GL
+ * context under long-run GPU/memory pressure; by default the browser then
+ * refuses to ever restore it and R3F's render loop (plus every drei <Html>
+ * overlay) silently stops, looking like a hard freeze.
+ *
+ * Calling preventDefault() on `webglcontextlost` tells the browser we want
+ * the context back, and on `webglcontextrestored` we kick the render loop
+ * so the scene resumes without a page reload.
+ */
+function WebGLContextGuard() {
+  const gl = useThree((s) => s.gl);
+  const invalidate = useThree((s) => s.invalidate);
+  const setFrameloop = useThree((s) => s.setFrameloop);
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const handleLost = (event: Event) => {
+      // Without this the context is gone for good and the scene freezes.
+      event.preventDefault();
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[ascii-aquarium] WebGL context lost; awaiting restore…",
+        );
+      }
+    };
+
+    const handleRestored = () => {
+      if (typeof console !== "undefined") {
+        console.warn("[ascii-aquarium] WebGL context restored");
+      }
+      // Resume the loop (it may have been parked) and force a redraw.
+      setFrameloop("always");
+      invalidate();
+    };
+
+    canvas.addEventListener("webglcontextlost", handleLost as EventListener);
+    canvas.addEventListener("webglcontextrestored", handleRestored);
+    return () => {
+      canvas.removeEventListener(
+        "webglcontextlost",
+        handleLost as EventListener,
+      );
+      canvas.removeEventListener("webglcontextrestored", handleRestored);
+    };
+  }, [gl, invalidate, setFrameloop]);
+
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -478,8 +539,18 @@ function Fish({
     const dt = s.accum;
     s.accum = 0;
 
-    // Publish our position so neighbors can avoid us this frame.
-    positions[index] = { x: s.x, y: s.y };
+    // Publish our position so neighbors can avoid us this frame. Mutate
+    // the existing slot instead of allocating a fresh object every frame —
+    // on the Pi that per-frame garbage is needless GC pressure.
+    {
+      const slot = positions[index];
+      if (slot) {
+        slot.x = s.x;
+        slot.y = s.y;
+      } else {
+        positions[index] = { x: s.x, y: s.y };
+      }
+    }
 
     // Steer toward the current waypoint.
     const dx = s.target.x - s.x;
@@ -559,8 +630,16 @@ function Fish({
     if (s.y < BOUND_MIN_Y) s.y = BOUND_MIN_Y;
     else if (s.y > BOUND_MAX_Y) s.y = BOUND_MAX_Y;
 
-    // Keep the registry in sync with the post-move position.
-    positions[index] = { x: s.x, y: s.y };
+    // Keep the registry in sync with the post-move position (reuse slot).
+    {
+      const slot = positions[index];
+      if (slot) {
+        slot.x = s.x;
+        slot.y = s.y;
+      } else {
+        positions[index] = { x: s.x, y: s.y };
+      }
+    }
 
     // Update facing based on actual horizontal travel direction. A small
     // deadzone avoids flicker when the fish is moving near-vertically.
