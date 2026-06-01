@@ -81,6 +81,38 @@ const MONO_FONT =
   'ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace';
 
 /**
+ * Body-undulation ("snake swim") parameters. Each fish character is
+ * offset vertically by a sine wave that travels along the body from
+ * head to tail, so the fish appears to ripple as it swims rather than
+ * sliding as a rigid line.
+ *
+ *  - AMPLITUDE_FACTOR: peak vertical offset as a fraction of the fish's
+ *    font size, so larger fish ripple proportionally more.
+ *  - ANGULAR_SPEED: radians/sec the wave advances in time (swim cadence).
+ *  - PHASE_PER_CHAR: radians of phase added per character along the body.
+ *    Higher = more visible "humps" packed into the body at once.
+ */
+const SWIM_WAVE_AMPLITUDE_FACTOR = 0.15;
+const SWIM_WAVE_ANGULAR_SPEED = 7;
+const SWIM_WAVE_PHASE_PER_CHAR = 0.85;
+
+/**
+ * Fish-to-fish avoidance ("separation" boids rule). Each fish writes
+ * its position to a shared registry every frame and steers away from
+ * neighbors that are too close, so the school spreads out instead of
+ * stacking on top of one another.
+ *
+ *  - RADIUS: world-unit distance under which two fish start repelling.
+ *  - WEIGHT: how strongly avoidance competes with the fish's drive
+ *    toward its current waypoint (1 = equal footing with target seek).
+ */
+const FISH_SEPARATION_RADIUS = 0.85;
+const FISH_SEPARATION_WEIGHT = 1.6;
+
+/** Shared, mutable fish positions keyed by fish index (x/y world units). */
+type FishPositions = ({ x: number; y: number } | null)[];
+
+/**
  * Top-level Renderer. Wrapper pattern matches every other module:
  *
  *   <div h-screen w-screen>                ← carousel slot
@@ -230,6 +262,14 @@ function Scene({
     [bubblePoolSize],
   );
 
+  // Shared registry of live fish positions so each fish can steer away
+  // from its neighbors. Re-sized to match the current fish count (during
+  // render so it's ready before the first frame after a count change).
+  const fishPositionsRef = useRef<FishPositions>([]);
+  if (fishPositionsRef.current.length !== fishParams.length) {
+    fishPositionsRef.current = new Array(fishParams.length).fill(null);
+  }
+
   return (
     <>
       <ambientLight intensity={1} />
@@ -247,6 +287,8 @@ function Scene({
         <Fish
           key={`fish-${i}`}
           params={params}
+          index={i}
+          positions={fishPositionsRef.current}
           performanceMode={performanceMode}
         />
       ))}
@@ -313,16 +355,20 @@ function pickFishTarget(): { x: number; y: number } {
 
 function Fish({
   params,
+  index,
+  positions,
   performanceMode,
 }: {
   params: FishParams;
+  index: number;
+  positions: FishPositions;
   performanceMode: boolean;
 }) {
   const groupRef = useRef<Group>(null);
-  // The visible <pre> whose textContent we mutate every wiggle tick.
-  // Direct DOM mutation avoids the React re-render that setState
-  // would otherwise schedule ~4 times per second per fish.
-  const preRef = useRef<HTMLPreElement>(null);
+  // One span per body character. We mutate each span's CSS transform
+  // (vertical offset) and textContent directly every frame — far
+  // cheaper than re-rendering React for a per-character animation.
+  const charRefs = useRef<(HTMLSpanElement | null)[]>([]);
   // The wrapper <div> we apply scaleX(-1) to when swimming left, so
   // the fish glyphs visually face the direction of travel.
   const facingRef = useRef<HTMLDivElement>(null);
@@ -342,14 +388,27 @@ function Fish({
 
   const species = FISH_SPECIES[params.speciesIndex] ?? FISH_SPECIES[0];
 
+  const baseFontSize = Math.round(11 * species.scale);
+
+  // Per-frame character arrays. Both wiggle frames are authored at the
+  // same length, so we can keep a fixed set of spans and only swap each
+  // span's character on the tail-flick tick.
+  const frameAChars = useMemo(() => species.a.split(""), [species.a]);
+  const frameBChars = useMemo(() => species.b.split(""), [species.b]);
+
+  const waveAmplitudePx = baseFontSize * SWIM_WAVE_AMPLITUDE_FACTOR;
+
   const frameInterval = performanceMode ? 1 / 30 : 0;
 
-  useFrame((_state, deltaSec) => {
+  useFrame((state, deltaSec) => {
     const s = stateRef.current;
     s.accum += deltaSec;
     if (s.accum < frameInterval) return;
     const dt = s.accum;
     s.accum = 0;
+
+    // Publish our position so neighbors can avoid us this frame.
+    positions[index] = { x: s.x, y: s.y };
 
     // Steer toward the current waypoint.
     const dx = s.target.x - s.x;
@@ -358,10 +417,6 @@ function Fish({
     if (dist < 0.25) {
       s.target = pickFishTarget();
       s.timeSinceTargetSwitch = 0;
-    } else {
-      const step = params.speed * dt;
-      s.x += (dx / dist) * step;
-      s.y += (dy / dist) * step;
     }
     s.timeSinceTargetSwitch += dt;
     if (s.timeSinceTargetSwitch > 6) {
@@ -369,6 +424,40 @@ function Fish({
       // fish from getting stuck on slow trajectories.
       s.target = pickFishTarget();
       s.timeSinceTargetSwitch = 0;
+    }
+
+    // Separation: accumulate a push away from any neighbor inside the
+    // avoidance radius, weighted stronger the closer they are.
+    let sepX = 0;
+    let sepY = 0;
+    for (let j = 0; j < positions.length; j++) {
+      if (j === index) continue;
+      const other = positions[j];
+      if (!other) continue;
+      const ox = s.x - other.x;
+      const oy = s.y - other.y;
+      const d2 = ox * ox + oy * oy;
+      if (d2 > 1e-6 && d2 < FISH_SEPARATION_RADIUS * FISH_SEPARATION_RADIUS) {
+        const d = Math.sqrt(d2);
+        const falloff = (FISH_SEPARATION_RADIUS - d) / FISH_SEPARATION_RADIUS;
+        sepX += (ox / d) * falloff;
+        sepY += (oy / d) * falloff;
+      }
+    }
+
+    // Blend the normalized seek direction with the separation push, then
+    // move along the combined heading. Separation can fully override the
+    // seek when neighbors are very close, which is what prevents stacking.
+    const seekLen = dist > 1e-6 ? dist : 1;
+    let dirX = (dx / seekLen) + sepX * FISH_SEPARATION_WEIGHT;
+    let dirY = (dy / seekLen) + sepY * FISH_SEPARATION_WEIGHT;
+    const dirLen = Math.hypot(dirX, dirY);
+    if (dirLen > 1e-6) {
+      dirX /= dirLen;
+      dirY /= dirLen;
+      const step = params.speed * dt;
+      s.x += dirX * step;
+      s.y += dirY * step;
     }
 
     // Hard clamp to the bounding box. Fish picking a near-edge target
@@ -380,11 +469,16 @@ function Fish({
     if (s.y < BOUND_MIN_Y) s.y = BOUND_MIN_Y;
     else if (s.y > BOUND_MAX_Y) s.y = BOUND_MAX_Y;
 
-    // Update facing based on horizontal motion direction. We apply
-    // it as a CSS transform on the inner div (not the Three.js group)
-    // because mirroring the Three group would also mirror its child
-    // Html overlay's position calculations.
-    const newFacing: 1 | -1 = dx < 0 ? -1 : 1;
+    // Keep the registry in sync with the post-move position.
+    positions[index] = { x: s.x, y: s.y };
+
+    // Update facing based on actual horizontal travel direction. A small
+    // deadzone avoids flicker when the fish is moving near-vertically.
+    // We apply it as a CSS transform on the inner div (not the Three.js
+    // group) because mirroring the Three group would also mirror its
+    // child Html overlay's position calculations.
+    const newFacing: 1 | -1 =
+      dirX < -0.15 ? -1 : dirX > 0.15 ? 1 : s.facing;
     if (newFacing !== s.facing) {
       s.facing = newFacing;
       if (facingRef.current) {
@@ -392,14 +486,30 @@ function Fish({
       }
     }
 
-    // Wiggle frame swap. Per-fish phase keeps the school out of sync.
+    // Tail-flick frame swap. Per-fish phase keeps the school out of sync.
     s.wiggleAccumMs += dt * 1000;
     if (s.wiggleAccumMs >= WIGGLE_PERIOD_MS) {
       s.wiggleAccumMs -= WIGGLE_PERIOD_MS;
       s.showFrameB = !s.showFrameB;
-      if (preRef.current) {
-        preRef.current.textContent = s.showFrameB ? species.b : species.a;
+      const frame = s.showFrameB ? frameBChars : frameAChars;
+      for (let i = 0; i < charRefs.current.length; i++) {
+        const span = charRefs.current[i];
+        if (span) span.textContent = frame[i] ?? "";
       }
+    }
+
+    // Body undulation: a sine wave travels along the body so the fish
+    // ripples like a swimming snake. The phase offset per character
+    // (`i * PHASE_PER_CHAR`) is what makes the hump travel head-to-tail
+    // instead of every character bobbing in unison.
+    const waveTime = state.clock.elapsedTime * SWIM_WAVE_ANGULAR_SPEED;
+    for (let i = 0; i < charRefs.current.length; i++) {
+      const span = charRefs.current[i];
+      if (!span) continue;
+      const offset =
+        waveAmplitudePx *
+        Math.sin(waveTime + params.phaseMs - i * SWIM_WAVE_PHASE_PER_CHAR);
+      span.style.transform = `translateY(${offset.toFixed(2)}px)`;
     }
 
     const g = groupRef.current;
@@ -412,8 +522,6 @@ function Fish({
       g.position.z = s.z;
     }
   });
-
-  const baseFontSize = Math.round(11 * species.scale);
 
   return (
     <group
@@ -442,7 +550,6 @@ function Fish({
           }}
         >
           <pre
-            ref={preRef}
             style={{
               margin: 0,
               fontFamily: MONO_FONT,
@@ -454,7 +561,19 @@ function Fish({
               userSelect: "none",
             }}
           >
-            {species.a}
+            {frameAChars.map((ch, i) => (
+              <span
+                key={i}
+                ref={(el) => {
+                  charRefs.current[i] = el;
+                }}
+                // inline-block lets each glyph take an independent
+                // translateY while monospace keeps columns aligned.
+                style={{ display: "inline-block", whiteSpace: "pre" }}
+              >
+                {ch}
+              </span>
+            ))}
           </pre>
         </div>
       </Html>
