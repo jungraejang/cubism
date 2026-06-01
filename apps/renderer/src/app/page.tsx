@@ -10,6 +10,42 @@ type ActiveModule = {
   config: unknown;
 };
 
+function debugRendererCarousel(
+  runId: string,
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  // #region agent log
+  fetch("/api/debug-log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "70f298",
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
+
+function rectData(rect: DOMRect | undefined) {
+  if (!rect) return null;
+  return {
+    left: Math.round(rect.left),
+    top: Math.round(rect.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+    centerX: Math.round(rect.left + rect.width / 2),
+    centerY: Math.round(rect.top + rect.height / 2),
+  };
+}
+
 export default function RendererHomePage() {
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
@@ -21,6 +57,7 @@ export default function RendererHomePage() {
    * discarded since they'd be invisible anyway.
    */
   const [streamData, setStreamData] = useState<unknown>(undefined);
+  const carouselSlotRef = useRef<HTMLDivElement>(null);
   /**
    * The active module id mirrored into a ref so the high-frequency
    * `module:stream` handler can filter without re-binding on every state
@@ -53,6 +90,22 @@ export default function RendererHomePage() {
     });
 
     socket.on("module:display", (payload) => {
+      debugRendererCarousel(
+        "post-fix-resize-1",
+        "H6",
+        "apps/renderer/src/app/page.tsx:module-display",
+        "Renderer received module display command",
+        {
+          previousModuleId: activeIdRef.current,
+          nextModuleId: payload.moduleId,
+          window: {
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+            devicePixelRatio: window.devicePixelRatio,
+          },
+        },
+      );
+
       const mod = modules.find((m) => m.manifest.id === payload.moduleId);
       if (!mod) {
         console.warn(
@@ -217,11 +270,46 @@ export default function RendererHomePage() {
       <AnimatePresence>
         {ActiveRenderer && active ? (
           <motion.div
+            ref={carouselSlotRef}
             key={active.module.manifest.id}
             initial={CAROUSEL.initial}
             animate={CAROUSEL.animate}
             exit={CAROUSEL.exit}
             transition={CAROUSEL.transition}
+            onAnimationStart={() => {
+              const slot = carouselSlotRef.current;
+              debugRendererCarousel(
+                "post-fix-resize-1",
+                "H6,H7",
+                "apps/renderer/src/app/page.tsx:carousel-start",
+                "Carousel animation started",
+                {
+                  moduleId: active.module.manifest.id,
+                  slotRect: rectData(slot?.getBoundingClientRect()),
+                  slotTransform: slot
+                    ? window.getComputedStyle(slot).transform
+                    : null,
+                },
+              );
+            }}
+            onAnimationComplete={() => {
+              const slot = carouselSlotRef.current;
+              window.dispatchEvent(new Event("resize"));
+              debugRendererCarousel(
+                "post-fix-resize-1",
+                "H6,H7",
+                "apps/renderer/src/app/page.tsx:carousel-complete",
+                "Carousel animation completed",
+                {
+                  moduleId: active.module.manifest.id,
+                  dispatchedResize: true,
+                  slotRect: rectData(slot?.getBoundingClientRect()),
+                  slotTransform: slot
+                    ? window.getComputedStyle(slot).transform
+                    : null,
+                },
+              );
+            }}
             className="absolute inset-0"
           >
             <ActiveRenderer config={active.config} streamData={streamData} />
