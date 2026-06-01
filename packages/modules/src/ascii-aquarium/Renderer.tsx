@@ -35,6 +35,13 @@ const PIXEL_SHIFT_INTERVAL_MS = 60_000;
 const PIXEL_SHIFT_DURATION_S = 2;
 
 /**
+ * In performance mode we run the entire R3F/Drei render loop on demand at a
+ * fixed low frame rate. This caps not just our own useFrame callbacks, but
+ * also drei Html's projection work, which is the long-running Pi cost.
+ */
+const PERFORMANCE_FRAME_INTERVAL_MS = 50;
+
+/**
  * Aquarium volume bounds in Three.js world units.
  *  - Fish: roam within these in X/Y, fixed Z per instance.
  *  - Seaweed: rooted at y=BOUND_MIN_Y, only sway laterally.
@@ -243,6 +250,7 @@ export function AsciiAquariumRenderer({
         >
           <Canvas
             dpr={dpr}
+            frameloop={performanceMode ? "demand" : "always"}
             camera={{ position: [0, 0, 5], fov: 50, near: 0.1, far: 100 }}
             // Antialiasing on text is handled by the browser's font
             // rasterizer (HTML `<pre>`), so the GL antialias setting
@@ -322,6 +330,7 @@ function Scene({
 
   return (
     <>
+      <AquariumFrameDriver performanceMode={performanceMode} />
       <WebGLContextGuard />
       <ambientLight intensity={1} />
 
@@ -357,6 +366,30 @@ function Scene({
   );
 }
 
+function AquariumFrameDriver({
+  performanceMode,
+}: {
+  performanceMode: boolean;
+}) {
+  const invalidate = useThree((s) => s.invalidate);
+
+  useFrame(() => {
+    markAquariumFrame();
+  });
+
+  useEffect(() => {
+    markAquariumFrame();
+    if (!performanceMode) return;
+
+    const id = window.setInterval(() => {
+      invalidate();
+    }, PERFORMANCE_FRAME_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [invalidate, performanceMode]);
+
+  return null;
+}
+
 /**
  * Keeps the aquarium alive across WebGL context loss — the #1 cause of a
  * "ran fine, then froze" on Raspberry Pi. The Pi's V3D driver drops the GL
@@ -380,9 +413,7 @@ function WebGLContextGuard() {
       // Without this the context is gone for good and the scene freezes.
       event.preventDefault();
       if (typeof console !== "undefined") {
-        console.warn(
-          "[ascii-aquarium] WebGL context lost; awaiting restore…",
-        );
+        console.warn("[ascii-aquarium] WebGL context lost; awaiting restore…");
       }
     };
 
@@ -723,10 +754,7 @@ function Fish({
               // Initial facing applied here so the first paint matches
               // the direction we'll start swimming in.
               transform: `scaleX(${params.target.x < params.initial.x ? -1 : 1})`,
-              // The CSS transition is a nicety for the desktop preview. On
-              // the Pi it makes the compositor keep animating a layer every
-              // frame, so we drop it in performance mode.
-              transition: performanceMode ? "none" : "transform 200ms ease",
+              transition: "transform 200ms ease",
               transformOrigin: "center center",
             }}
           >
@@ -738,14 +766,7 @@ function Fish({
                 lineHeight: 1,
                 color: params.color,
                 whiteSpace: "pre",
-                // Blurred text-shadow on a continuously transformed element
-                // is the single most expensive thing we can ask the Pi's
-                // GPU to do every frame — it forces a re-raster of the glow
-                // on every move/scale and slowly exhausts compositor memory
-                // until the tab hangs. Drop the glow entirely in perf mode.
-                textShadow: performanceMode
-                  ? "none"
-                  : `0 0 6px ${params.color}66`,
+                textShadow: `0 0 6px ${params.color}66`,
                 userSelect: "none",
               }}
             >
@@ -874,16 +895,11 @@ function Seaweed({
             lineHeight: 1,
             color,
             whiteSpace: "pre",
-            // See the fish note: blurred glow on an element we re-transform
-            // every frame is the Pi's GPU killer. Off in performance mode.
-            textShadow: performanceMode ? "none" : `0 0 4px ${color}55`,
+            textShadow: `0 0 4px ${color}55`,
             userSelect: "none",
             // Anchor sway at the base of the stalk.
             transformOrigin: "center bottom",
-            // Transform is driven by JS every frame, so the CSS transition
-            // is redundant churn on the Pi — only keep it for the smoother
-            // desktop preview.
-            transition: performanceMode ? "none" : "transform 80ms linear",
+            transition: "transform 80ms linear",
           }}
         >
           {rows.map((row, i) => (
@@ -893,10 +909,10 @@ function Seaweed({
                 rowRefs.current[i] = el;
               }}
               // Smooth the per-row offset between throttled frames so the
-              // ripple stays fluid even at 15fps — desktop preview only.
+              // ripple stays fluid even at 15fps in performance mode.
               style={{
                 whiteSpace: "pre",
-                transition: performanceMode ? "none" : "transform 120ms linear",
+                transition: "transform 120ms linear",
               }}
             >
               {row.length > 0 ? row : " "}
@@ -1007,9 +1023,7 @@ function Bubble({
             lineHeight: 1,
             color,
             whiteSpace: "pre",
-            // Blurred glow is dropped on the Pi (perf mode) to spare the
-            // compositor; bubbles move every frame so it's costly.
-            textShadow: performanceMode ? "none" : `0 0 4px ${color}88`,
+            textShadow: `0 0 4px ${color}88`,
             userSelect: "none",
           }}
         >
@@ -1023,6 +1037,15 @@ function Bubble({
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
+
+function markAquariumFrame() {
+  if (typeof window === "undefined") return;
+  (
+    window as Window & {
+      __cubismAquariumLastFrame?: number;
+    }
+  ).__cubismAquariumLastFrame = Date.now();
+}
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;

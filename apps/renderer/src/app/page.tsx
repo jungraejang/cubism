@@ -10,11 +10,21 @@ type ActiveModule = {
   config: unknown;
 };
 
+type CubismRendererWindow = Window & {
+  __cubismAquariumLastFrame?: number;
+};
+
+const AQUARIUM_STALL_RELOAD_MS = 20_000;
+const SOCKET_DISCONNECTED_RELOAD_MS = 60_000;
+const WATCHDOG_INTERVAL_MS = 5_000;
+
 export default function RendererHomePage() {
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
   const [active, setActive] = useState<ActiveModule | null>(null);
   const resizeFrameRef = useRef<number | null>(null);
+  const connectedRef = useRef(false);
+  const disconnectedSinceRef = useRef<number | null>(null);
   /**
    * Latest stream payload for the currently active module. Stored as state
    * (not just a ref) so module Renderers re-render when new frames arrive.
@@ -51,12 +61,52 @@ export default function RendererHomePage() {
 
   useEffect(() => {
     activeIdRef.current = active?.module.manifest.id ?? null;
+    if (active?.module.manifest.id === "ascii-aquarium") {
+      (window as CubismRendererWindow).__cubismAquariumLastFrame = Date.now();
+    }
   }, [active]);
+
+  /**
+   * Pi kiosk watchdog. If the aquarium's R3F/Drei frame loop stalls, keyboard
+   * handling usually appears dead too because the browser renderer is wedged.
+   * A soft reload is the least surprising recovery path for a wall/kiosk app.
+   */
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const now = Date.now();
+
+      if (!connectedRef.current) {
+        const disconnectedSince = disconnectedSinceRef.current;
+        if (
+          disconnectedSince !== null &&
+          now - disconnectedSince > SOCKET_DISCONNECTED_RELOAD_MS
+        ) {
+          window.location.reload();
+        }
+        return;
+      }
+
+      if (activeIdRef.current !== "ascii-aquarium") return;
+
+      const lastFrame = (window as CubismRendererWindow)
+        .__cubismAquariumLastFrame;
+      if (
+        typeof lastFrame === "number" &&
+        now - lastFrame > AQUARIUM_STALL_RELOAD_MS
+      ) {
+        window.location.reload();
+      }
+    }, WATCHDOG_INTERVAL_MS);
+
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     socket.connect();
 
     socket.on("connect", () => {
+      connectedRef.current = true;
+      disconnectedSinceRef.current = null;
       setConnected(true);
 
       socket.emit("client:register", {
@@ -67,6 +117,8 @@ export default function RendererHomePage() {
     });
 
     socket.on("disconnect", () => {
+      connectedRef.current = false;
+      disconnectedSinceRef.current = Date.now();
       setConnected(false);
     });
 
@@ -141,9 +193,7 @@ export default function RendererHomePage() {
    * `module:display`.
    */
   useEffect(() => {
-    function classify(
-      event: KeyboardEvent,
-    ): "next" | "prev" | "select" | null {
+    function classify(event: KeyboardEvent): "next" | "prev" | "select" | null {
       // Ignore modified shortcuts so Ctrl-L / Cmd-R etc. don't fight us.
       if (event.ctrlKey || event.metaKey || event.altKey) return null;
       switch (event.key) {
@@ -222,10 +272,7 @@ export default function RendererHomePage() {
      * just renders as a flat horizontal squash. `fixed inset-0` makes the
      * carousel slot fill the viewport regardless of any host body styles.
      */
-    <div
-      className="fixed inset-0 bg-black"
-      style={{ perspective: "1500px" }}
-    >
+    <div className="fixed inset-0 bg-black" style={{ perspective: "1500px" }}>
       {/*
        * AnimatePresence with the default `sync` mode lets the outgoing and
        * incoming module animate at the same time, which is what gives the
