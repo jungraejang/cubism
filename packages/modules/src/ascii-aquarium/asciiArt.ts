@@ -27,46 +27,47 @@ export type FishSpecies = {
 };
 
 /**
- * Five fish species, deliberately varied in silhouette so a school of
- * six looks like a real ecosystem rather than six clones. Two-frame
- * wiggle on each — the difference between frames is intentionally
- * subtle (tail flip, fin shift) so the eye reads it as breathing, not
- * teleporting.
+ * Single-line fish in the classic `<º)))><` style. All shapes are
+ * authored RIGHT-FACING — e.g. `><(((º>` — and CSS-mirrored at runtime
+ * when a fish swims left, at which point the rendered glyphs flip into
+ * `<º)))><` (the user-facing form).
  *
- * Column alignment is sacred: every `\n`-separated row must have the
- * same visual width once rendered in a monospace font, or the body
- * will skew. Test changes by pasting into a monospace editor.
+ * Each species varies the body length so a school reads as a mix of
+ * small/medium/large fish without needing different art directions.
+ * The two wiggle frames flip the body parens between `(` and `)` to
+ * suggest a side-to-side tail flick — the classic ASCII fish
+ * swim animation.
  */
 export const FISH_SPECIES: FishSpecies[] = [
-  // 1) Quick darter (small, 2 rows).
+  // 1) Small minnow.
   {
-    a: "    __\n>(((o>",
-    b: "    __\n>((((o>",
+    a: "><(º>",
+    b: "><)º>",
     scale: 0.95,
   },
-  // 2) Classic tropical (medium, 4 rows).
+  // 2) Standard fish — the user's requested `<º)))><` shape (right-facing).
   {
-    a: "   ___\n  / o \\___\n <      ===\n  \\___/",
-    b: "   ___\n  / o \\__\n <      ==\n  \\___/",
+    a: "><(((º>",
+    b: "><)))º>",
     scale: 1.05,
   },
-  // 3) Puffer-style with two "eyes" (medium-wide, 4 rows).
+  // 3) Long-bodied fish.
   {
-    a: "    ____\n  /  o   \\\n  <      >>\n  \\______/",
-    b: "    ____\n  /  o   \\\n  <      >\n  \\______/",
+    a: "><(((((º>",
+    b: "><)))))º>",
     scale: 1.15,
   },
-  // 4) Long-tailed fish (medium, 4 rows).
+  // 4) Stubby pufferfish — same shape, different proportions.
   {
-    a: "        __\n   ___/   \\\n  <  o    .)\n   \\___|/",
-    b: "        __\n   ___/   \\\n  <  o    .)\n   \\___/",
+    a: "><((º>",
+    b: "><))º>",
     scale: 1.0,
   },
-  // 5) Big chevron beast (large, 4 rows).
+  // 5) Extra-long eel-like fish.
   {
-    a: "    _____\n   (     \\\n  < o     )\n   (_____/",
-    b: "    _____\n   (     /\n  < o     \\\n   (_____/",
-    scale: 1.25,
+    a: "><(((((((º>",
+    b: "><)))))))º>",
+    scale: 1.2,
   },
 ];
 

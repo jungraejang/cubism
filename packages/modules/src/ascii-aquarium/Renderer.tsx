@@ -14,8 +14,6 @@ import {
   DEFAULT_PERFORMANCE_MODE,
   DEFAULT_SEAWEED_COLOR,
   DEFAULT_SEAWEED_COUNT,
-  NORMAL_CAPS,
-  PERF_CAPS,
   type AsciiAquariumConfig,
 } from "./config";
 import {
@@ -40,13 +38,30 @@ const PIXEL_SHIFT_DURATION_S = 2;
  *  - Fish: roam within these in X/Y, fixed Z per instance.
  *  - Seaweed: rooted at y=BOUND_MIN_Y, only sway laterally.
  *  - Bubbles: respawn at y=BOUND_MIN_Y when they reach y=BOUND_MAX_Y.
+ *
+ * These are CONSERVATIVE compared to the camera's actual visible
+ * region because:
+ *   1. The perspective camera narrows visible width as objects move
+ *      toward it (higher z = smaller visible bounds), so authoring
+ *      world bounds for z=0 leaves close-up fish swimming past the
+ *      canvas edges.
+ *   2. drei's `<Html>` overlay isn't clipped to the canvas DOM — any
+ *      element whose 3D projection lands outside the viewport keeps
+ *      rendering anyway, until its CSS overflow:hidden ancestor cuts
+ *      it off.
+ *   3. The aspect ratio of the hologram display varies, but most are
+ *      close to 16:9 / 5:3, so a worst-case-narrow assumption keeps
+ *      every shape on-screen for everyone.
+ *
+ * Tighter Z range also keeps the parallax effect subtle enough to
+ * read as depth without making far-back fish vanish into pixels.
  */
-const BOUND_MIN_X = -3.6;
-const BOUND_MAX_X = 3.6;
-const BOUND_MIN_Y = -2.0;
-const BOUND_MAX_Y = 2.0;
-const BOUND_MIN_Z = -1.8;
-const BOUND_MAX_Z = 1.5;
+const BOUND_MIN_X = -2.4;
+const BOUND_MAX_X = 2.4;
+const BOUND_MIN_Y = -1.5;
+const BOUND_MAX_Y = 1.5;
+const BOUND_MIN_Z = -0.8;
+const BOUND_MAX_Z = 0.6;
 
 /**
  * Camera-to-element distance factor for drei's `<Html>`. With camera
@@ -83,24 +98,21 @@ export function AsciiAquariumRenderer({
   const scaleY = config.flipVertical ? -1 : 1;
 
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
-  const caps = performanceMode ? PERF_CAPS : NORMAL_CAPS;
 
-  const fishCount = Math.min(
-    config.fishCount ?? DEFAULT_FISH_COUNT,
-    caps.fishCount,
-  );
-  const seaweedCount = Math.min(
-    config.seaweedCount ?? DEFAULT_SEAWEED_COUNT,
-    caps.seaweedCount,
-  );
+  // Honor the user's slider values directly. We used to clamp these
+  // against a runtime PERF_CAPS object when performance mode was on,
+  // but that gave the sliders a dead zone above the cap — moving from
+  // 8 → 12 visibly did nothing because we'd still render only 6 fish.
+  // The performance mode toggle now affects render quality and frame
+  // throttle, not raw element count; users who push the count past
+  // what their Pi can handle can dial it back themselves.
+  const fishCount = config.fishCount ?? DEFAULT_FISH_COUNT;
+  const seaweedCount = config.seaweedCount ?? DEFAULT_SEAWEED_COUNT;
   // Bubble pool derived from the user's bubble-per-minute setting.
   // Pool size is fixed; bubbles recycle when they reach the surface
   // (no spawn/despawn churn at run time).
   const bubbleRate = config.bubbleRate ?? DEFAULT_BUBBLE_RATE;
-  const bubblePoolSize = Math.min(
-    Math.max(1, Math.ceil(bubbleRate * 0.18)),
-    caps.bubblePoolSize,
-  );
+  const bubblePoolSize = Math.max(1, Math.ceil(bubbleRate * 0.18));
 
   const backgroundColor = config.backgroundColor ?? DEFAULT_BACKGROUND_COLOR;
   const seaweedColor = config.seaweedColor ?? DEFAULT_SEAWEED_COLOR;
@@ -331,6 +343,15 @@ function Fish({
       s.target = pickFishTarget();
       s.timeSinceTargetSwitch = 0;
     }
+
+    // Hard clamp to the bounding box. Fish picking a near-edge target
+    // and overshooting it slightly (or starting outside the box after
+    // a bounds change) would otherwise drift visibly off-canvas
+    // because the Html overlay doesn't clip to the viewport.
+    if (s.x < BOUND_MIN_X) s.x = BOUND_MIN_X;
+    else if (s.x > BOUND_MAX_X) s.x = BOUND_MAX_X;
+    if (s.y < BOUND_MIN_Y) s.y = BOUND_MIN_Y;
+    else if (s.y > BOUND_MAX_Y) s.y = BOUND_MAX_Y;
 
     // Update facing based on horizontal motion direction. We apply
     // it as a CSS transform on the inner div (not the Three.js group)

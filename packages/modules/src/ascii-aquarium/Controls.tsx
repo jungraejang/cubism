@@ -93,10 +93,8 @@ export function AsciiAquariumControls({
         </label>
 
         <p className="text-xs text-zinc-500">
-          Performance mode caps these at {/* fmt */}
-          {/* PERF_CAPS values intentionally inlined as text — short list, keeps Controls dependency-free */}
-          6 fish / 4 seaweed / 10 bubbles regardless of the slider position,
-          so the Pi never tries to render more than it comfortably can.
+          Higher counts look richer but cost more on the Pi. If frame rate
+          dips, drop these or enable Performance mode below.
         </p>
       </div>
 
