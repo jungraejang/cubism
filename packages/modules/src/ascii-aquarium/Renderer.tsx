@@ -723,7 +723,10 @@ function Fish({
               // Initial facing applied here so the first paint matches
               // the direction we'll start swimming in.
               transform: `scaleX(${params.target.x < params.initial.x ? -1 : 1})`,
-              transition: "transform 200ms ease",
+              // The CSS transition is a nicety for the desktop preview. On
+              // the Pi it makes the compositor keep animating a layer every
+              // frame, so we drop it in performance mode.
+              transition: performanceMode ? "none" : "transform 200ms ease",
               transformOrigin: "center center",
             }}
           >
@@ -735,7 +738,14 @@ function Fish({
                 lineHeight: 1,
                 color: params.color,
                 whiteSpace: "pre",
-                textShadow: `0 0 6px ${params.color}66`,
+                // Blurred text-shadow on a continuously transformed element
+                // is the single most expensive thing we can ask the Pi's
+                // GPU to do every frame — it forces a re-raster of the glow
+                // on every move/scale and slowly exhausts compositor memory
+                // until the tab hangs. Drop the glow entirely in perf mode.
+                textShadow: performanceMode
+                  ? "none"
+                  : `0 0 6px ${params.color}66`,
                 userSelect: "none",
               }}
             >
@@ -864,11 +874,16 @@ function Seaweed({
             lineHeight: 1,
             color,
             whiteSpace: "pre",
-            textShadow: `0 0 4px ${color}55`,
+            // See the fish note: blurred glow on an element we re-transform
+            // every frame is the Pi's GPU killer. Off in performance mode.
+            textShadow: performanceMode ? "none" : `0 0 4px ${color}55`,
             userSelect: "none",
             // Anchor sway at the base of the stalk.
             transformOrigin: "center bottom",
-            transition: "transform 80ms linear",
+            // Transform is driven by JS every frame, so the CSS transition
+            // is redundant churn on the Pi — only keep it for the smoother
+            // desktop preview.
+            transition: performanceMode ? "none" : "transform 80ms linear",
           }}
         >
           {rows.map((row, i) => (
@@ -878,10 +893,10 @@ function Seaweed({
                 rowRefs.current[i] = el;
               }}
               // Smooth the per-row offset between throttled frames so the
-              // ripple stays fluid even at 15fps in performance mode.
+              // ripple stays fluid even at 15fps — desktop preview only.
               style={{
                 whiteSpace: "pre",
-                transition: "transform 120ms linear",
+                transition: performanceMode ? "none" : "transform 120ms linear",
               }}
             >
               {row.length > 0 ? row : " "}
@@ -992,7 +1007,9 @@ function Bubble({
             lineHeight: 1,
             color,
             whiteSpace: "pre",
-            textShadow: `0 0 4px ${color}88`,
+            // Blurred glow is dropped on the Pi (perf mode) to spare the
+            // compositor; bubbles move every frame so it's costly.
+            textShadow: performanceMode ? "none" : `0 0 4px ${color}88`,
             userSelect: "none",
           }}
         >
