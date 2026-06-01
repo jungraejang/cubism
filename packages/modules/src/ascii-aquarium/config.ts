@@ -10,6 +10,11 @@ import { OrientationFields } from "../_lib/orientation";
 export const AsciiAquariumConfigSchema = z.object({
   /** How many fish the aquarium attempts to render. Hard-capped by perf mode. */
   fishCount: z.number().int().min(0).max(20).optional(),
+  /**
+   * Multiplier on the base fish swim speed. 1 = the original tuning; the
+   * slider exposes a 0.25–2.5 range so the tank can read as calm or lively.
+   */
+  fishSpeed: z.number().min(0.1).max(5).optional(),
   /** How many seaweed stalks anchor along the bottom. */
   seaweedCount: z.number().int().min(0).max(12).optional(),
   /**
@@ -39,6 +44,7 @@ export const AsciiAquariumConfigSchema = z.object({
 export type AsciiAquariumConfig = z.infer<typeof AsciiAquariumConfigSchema>;
 
 export const DEFAULT_FISH_COUNT = 6;
+export const DEFAULT_FISH_SPEED = 1;
 export const DEFAULT_SEAWEED_COUNT = 4;
 export const DEFAULT_BUBBLE_RATE = 30;
 export const DEFAULT_BACKGROUND_COLOR = "#031827";

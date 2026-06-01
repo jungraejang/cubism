@@ -11,6 +11,7 @@ import {
   DEFAULT_BUBBLE_COLOR,
   DEFAULT_BUBBLE_RATE,
   DEFAULT_FISH_COUNT,
+  DEFAULT_FISH_SPEED,
   DEFAULT_PERFORMANCE_MODE,
   DEFAULT_SEAWEED_COLOR,
   DEFAULT_SEAWEED_COUNT,
@@ -62,6 +63,29 @@ const BOUND_MIN_Y = -1.5;
 const BOUND_MAX_Y = 1.5;
 const BOUND_MIN_Z = -0.8;
 const BOUND_MAX_Z = 0.6;
+
+/**
+ * Fish-only depth roam range. Fish now drift in Z for a parallax depth
+ * effect, but we keep the far plane well short of BOUND_MIN_Z so a fish
+ * swimming "back" never shrinks to an unreadable speck. The near plane
+ * matches the scene max so fish can still glide right up to the glass.
+ */
+const FISH_Z_MIN = -0.25;
+const FISH_Z_MAX = 1;
+
+/** How fast a fish closes the gap to its depth target (world units/sec). */
+const FISH_Z_SPEED = 0.5;
+
+/**
+ * Explicit depth-scale mapping. drei's `<Html distanceFactor>` does scale
+ * with camera distance, but over our shallow z-range at camera distance ~5
+ * the variation is only ~15% and barely perceptible. We instead drive a
+ * dedicated CSS scale from the fish's normalized z so the depth effect is
+ * obvious and directly tunable. MIN is the floor that guarantees a
+ * back-swimming fish never becomes an unreadable speck.
+ */
+const FISH_DEPTH_SCALE_MIN = 0.55;
+const FISH_DEPTH_SCALE_MAX = 1.35;
 
 /**
  * Camera-to-element distance factor for drei's `<Html>`. With camera
@@ -153,6 +177,7 @@ export function AsciiAquariumRenderer({
   // throttle, not raw element count; users who push the count past
   // what their Pi can handle can dial it back themselves.
   const fishCount = config.fishCount ?? DEFAULT_FISH_COUNT;
+  const fishSpeed = config.fishSpeed ?? DEFAULT_FISH_SPEED;
   const seaweedCount = config.seaweedCount ?? DEFAULT_SEAWEED_COUNT;
   // Bubble pool derived from the user's bubble-per-minute setting.
   // Pool size is fixed; bubbles recycle when they reach the surface
@@ -233,6 +258,7 @@ export function AsciiAquariumRenderer({
           >
             <Scene
               fishCount={fishCount}
+              fishSpeed={fishSpeed}
               seaweedCount={seaweedCount}
               bubblePoolSize={bubblePoolSize}
               seaweedColor={seaweedColor}
@@ -253,6 +279,7 @@ export function AsciiAquariumRenderer({
  */
 function Scene({
   fishCount,
+  fishSpeed,
   seaweedCount,
   bubblePoolSize,
   seaweedColor,
@@ -260,6 +287,7 @@ function Scene({
   performanceMode,
 }: {
   fishCount: number;
+  fishSpeed: number;
   seaweedCount: number;
   bubblePoolSize: number;
   seaweedColor: string;
@@ -303,6 +331,7 @@ function Scene({
           params={params}
           index={i}
           positions={fishPositionsRef.current}
+          speedMultiplier={fishSpeed}
           performanceMode={performanceMode}
         />
       ))}
@@ -332,6 +361,8 @@ type FishParams = {
   phaseMs: number;
   /** Initial waypoint to swim toward. Re-rolled when reached. */
   target: { x: number; y: number };
+  /** Initial depth waypoint. Re-rolled alongside the x/y target. */
+  targetZ: number;
   speed: number;
 };
 
@@ -345,14 +376,33 @@ function buildFishParams(count: number): FishParams[] {
       initial: {
         x: lerp(BOUND_MIN_X, BOUND_MAX_X, Math.random()),
         y: lerp(BOUND_MIN_Y + 0.5, BOUND_MAX_Y - 0.3, Math.random()),
-        z: lerp(BOUND_MIN_Z, BOUND_MAX_Z, Math.random()),
+        z: lerp(FISH_Z_MIN, FISH_Z_MAX, Math.random()),
       },
       phaseMs: Math.random() * WIGGLE_PERIOD_MS,
       target: pickFishTarget(),
+      targetZ: pickFishZ(),
       speed: 0.35 + Math.random() * 0.4,
     });
   }
   return out;
+}
+
+/** Picks a depth waypoint within the readable fish z-roam range. */
+function pickFishZ(): number {
+  return lerp(FISH_Z_MIN, FISH_Z_MAX, Math.random());
+}
+
+/**
+ * Maps a fish's z (depth) to an explicit CSS scale. Far plane → MIN,
+ * near plane → MAX. Clamped so values outside the roam range (e.g. after
+ * a constant tweak) still produce a sane, readable scale.
+ */
+function depthScaleForZ(z: number): number {
+  const span = FISH_Z_MAX - FISH_Z_MIN || 1;
+  let t = (z - FISH_Z_MIN) / span;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  return lerp(FISH_DEPTH_SCALE_MIN, FISH_DEPTH_SCALE_MAX, t);
 }
 
 /**
@@ -371,11 +421,13 @@ function Fish({
   params,
   index,
   positions,
+  speedMultiplier,
   performanceMode,
 }: {
   params: FishParams;
   index: number;
   positions: FishPositions;
+  speedMultiplier: number;
   performanceMode: boolean;
 }) {
   const groupRef = useRef<Group>(null);
@@ -386,12 +438,17 @@ function Fish({
   // The wrapper <div> we apply scaleX(-1) to when swimming left, so
   // the fish glyphs visually face the direction of travel.
   const facingRef = useRef<HTMLDivElement>(null);
+  // Outer wrapper we apply a uniform depth scale to (driven by z). Kept
+  // separate from facingRef so the per-frame depth scale doesn't fight
+  // the CSS transition used for the direction flip.
+  const depthRef = useRef<HTMLDivElement>(null);
 
   const stateRef = useRef({
     x: params.initial.x,
     y: params.initial.y,
     z: params.initial.z,
     target: params.target,
+    targetZ: params.targetZ,
     /** +1 = right, -1 = left. Drives the CSS X-scale flip on facingRef. */
     facing: 1 as 1 | -1,
     accum: 0,
@@ -430,6 +487,7 @@ function Fish({
     const dist = Math.hypot(dx, dy);
     if (dist < 0.25) {
       s.target = pickFishTarget();
+      s.targetZ = pickFishZ();
       s.timeSinceTargetSwitch = 0;
     }
     s.timeSinceTargetSwitch += dt;
@@ -437,6 +495,7 @@ function Fish({
       // Periodic kick to a fresh target even if not reached — keeps
       // fish from getting stuck on slow trajectories.
       s.target = pickFishTarget();
+      s.targetZ = pickFishZ();
       s.timeSinceTargetSwitch = 0;
     }
 
@@ -463,15 +522,32 @@ function Fish({
     // move along the combined heading. Separation can fully override the
     // seek when neighbors are very close, which is what prevents stacking.
     const seekLen = dist > 1e-6 ? dist : 1;
-    let dirX = (dx / seekLen) + sepX * FISH_SEPARATION_WEIGHT;
-    let dirY = (dy / seekLen) + sepY * FISH_SEPARATION_WEIGHT;
+    let dirX = dx / seekLen + sepX * FISH_SEPARATION_WEIGHT;
+    let dirY = dy / seekLen + sepY * FISH_SEPARATION_WEIGHT;
     const dirLen = Math.hypot(dirX, dirY);
     if (dirLen > 1e-6) {
       dirX /= dirLen;
       dirY /= dirLen;
-      const step = params.speed * dt;
+      const step = params.speed * speedMultiplier * dt;
       s.x += dirX * step;
       s.y += dirY * step;
+    }
+
+    // Depth drift: ease toward the current depth waypoint for a parallax
+    // effect. Clamped to the readable fish z-range so back-swimming fish
+    // never shrink to an unreadable speck.
+    const dz = s.targetZ - s.z;
+    const zStep = FISH_Z_SPEED * speedMultiplier * dt;
+    if (Math.abs(dz) <= zStep) s.z = s.targetZ;
+    else s.z += Math.sign(dz) * zStep;
+    if (s.z < FISH_Z_MIN) s.z = FISH_Z_MIN;
+    else if (s.z > FISH_Z_MAX) s.z = FISH_Z_MAX;
+
+    // Drive the explicit depth scale from the (post-clamp) z so near fish
+    // read clearly larger than far fish — the drei distanceFactor alone is
+    // too subtle over this z-range to notice.
+    if (depthRef.current) {
+      depthRef.current.style.transform = `scale(${depthScaleForZ(s.z).toFixed(3)})`;
     }
 
     // Hard clamp to the bounding box. Fish picking a near-edge target
@@ -491,8 +567,7 @@ function Fish({
     // We apply it as a CSS transform on the inner div (not the Three.js
     // group) because mirroring the Three group would also mirror its
     // child Html overlay's position calculations.
-    const newFacing: 1 | -1 =
-      dirX < -0.15 ? -1 : dirX > 0.15 ? 1 : s.facing;
+    const newFacing: 1 | -1 = dirX < -0.15 ? -1 : dirX > 0.15 ? 1 : s.facing;
     if (newFacing !== s.facing) {
       s.facing = newFacing;
       if (facingRef.current) {
@@ -530,7 +605,8 @@ function Fish({
     if (g) {
       // Micro-bob on Y gives a buoyant feel even when moving mostly
       // horizontally. Phase derived from per-fish offset.
-      const bob = Math.sin((s.wiggleAccumMs / 1000) * 4 + params.phaseMs) * 0.04;
+      const bob =
+        Math.sin((s.wiggleAccumMs / 1000) * 4 + params.phaseMs) * 0.04;
       g.position.x = s.x;
       g.position.y = s.y + bob;
       g.position.z = s.z;
@@ -554,41 +630,51 @@ function Fish({
         style={{ pointerEvents: "none" }}
       >
         <div
-          ref={facingRef}
+          ref={depthRef}
           style={{
-            // Initial facing applied here so the first paint matches
-            // the direction we'll start swimming in.
-            transform: `scaleX(${params.target.x < params.initial.x ? -1 : 1})`,
-            transition: "transform 200ms ease",
+            // Depth scale (driven per-frame from z). Initial value matches
+            // the fish's starting depth so the first paint is correct.
+            transform: `scale(${depthScaleForZ(params.initial.z)})`,
             transformOrigin: "center center",
           }}
         >
-          <pre
+          <div
+            ref={facingRef}
             style={{
-              margin: 0,
-              fontFamily: MONO_FONT,
-              fontSize: `${baseFontSize}px`,
-              lineHeight: 1,
-              color: params.color,
-              whiteSpace: "pre",
-              textShadow: `0 0 6px ${params.color}66`,
-              userSelect: "none",
+              // Initial facing applied here so the first paint matches
+              // the direction we'll start swimming in.
+              transform: `scaleX(${params.target.x < params.initial.x ? -1 : 1})`,
+              transition: "transform 200ms ease",
+              transformOrigin: "center center",
             }}
           >
-            {frameAChars.map((ch, i) => (
-              <span
-                key={i}
-                ref={(el) => {
-                  charRefs.current[i] = el;
-                }}
-                // inline-block lets each glyph take an independent
-                // translateY while monospace keeps columns aligned.
-                style={{ display: "inline-block", whiteSpace: "pre" }}
-              >
-                {ch}
-              </span>
-            ))}
-          </pre>
+            <pre
+              style={{
+                margin: 0,
+                fontFamily: MONO_FONT,
+                fontSize: `${baseFontSize}px`,
+                lineHeight: 1,
+                color: params.color,
+                whiteSpace: "pre",
+                textShadow: `0 0 6px ${params.color}66`,
+                userSelect: "none",
+              }}
+            >
+              {frameAChars.map((ch, i) => (
+                <span
+                  key={i}
+                  ref={(el) => {
+                    charRefs.current[i] = el;
+                  }}
+                  // inline-block lets each glyph take an independent
+                  // translateY while monospace keeps columns aligned.
+                  style={{ display: "inline-block", whiteSpace: "pre" }}
+                >
+                  {ch}
+                </span>
+              ))}
+            </pre>
+          </div>
         </div>
       </Html>
     </group>
@@ -714,7 +800,10 @@ function Seaweed({
               }}
               // Smooth the per-row offset between throttled frames so the
               // ripple stays fluid even at 15fps in performance mode.
-              style={{ whiteSpace: "pre", transition: "transform 120ms linear" }}
+              style={{
+                whiteSpace: "pre",
+                transition: "transform 120ms linear",
+              }}
             >
               {row.length > 0 ? row : " "}
             </div>
@@ -784,7 +873,8 @@ function Bubble({
     s.accum = 0;
 
     s.y += params.riseSpeed * dt;
-    s.x += Math.sin(state.clock.elapsedTime * 1.4 + params.driftPhase) * dt * 0.18;
+    s.x +=
+      Math.sin(state.clock.elapsedTime * 1.4 + params.driftPhase) * dt * 0.18;
 
     if (s.y > BOUND_MAX_Y + 0.2) {
       s.x = lerp(BOUND_MIN_X, BOUND_MAX_X, Math.random());

@@ -8,6 +8,7 @@ import {
   DEFAULT_BUBBLE_COLOR,
   DEFAULT_BUBBLE_RATE,
   DEFAULT_FISH_COUNT,
+  DEFAULT_FISH_SPEED,
   DEFAULT_PERFORMANCE_MODE,
   DEFAULT_SEAWEED_COLOR,
   DEFAULT_SEAWEED_COUNT,
@@ -25,6 +26,7 @@ export function AsciiAquariumControls({
 
   const rotation = config.rotation ?? 0;
   const fishCount = config.fishCount ?? DEFAULT_FISH_COUNT;
+  const fishSpeed = config.fishSpeed ?? DEFAULT_FISH_SPEED;
   const seaweedCount = config.seaweedCount ?? DEFAULT_SEAWEED_COUNT;
   const bubbleRate = config.bubbleRate ?? DEFAULT_BUBBLE_RATE;
   const backgroundColor = config.backgroundColor ?? DEFAULT_BACKGROUND_COLOR;
@@ -50,6 +52,25 @@ export function AsciiAquariumControls({
             value={fishCount}
             onChange={(event) =>
               patch({ fishCount: Number(event.target.value) })
+            }
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm text-zinc-300">
+          <span className="flex items-baseline justify-between">
+            <span>Fish speed</span>
+            <span className="font-mono text-xs text-zinc-500">
+              {fishSpeed.toFixed(2)}×
+            </span>
+          </span>
+          <input
+            type="range"
+            min={0.25}
+            max={2.5}
+            step={0.25}
+            value={fishSpeed}
+            onChange={(event) =>
+              patch({ fishSpeed: Number(event.target.value) })
             }
           />
         </label>
