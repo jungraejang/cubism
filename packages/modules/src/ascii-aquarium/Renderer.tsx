@@ -113,6 +113,20 @@ const FISH_SEPARATION_WEIGHT = 1.6;
 type FishPositions = ({ x: number; y: number } | null)[];
 
 /**
+ * Seaweed body wave. Layered on top of the existing slow `skewX` swing:
+ * each row of the stalk is offset horizontally by a sine wave that
+ * travels up the stalk, so the kelp ripples like the fish bodies do.
+ * Amplitude tapers to zero at the base so the stalk stays rooted.
+ *
+ *  - AMPLITUDE_PX: peak horizontal offset (px) at the very tip.
+ *  - ANGULAR_SPEED: radians/sec the ripple advances (kept slow/gentle).
+ *  - PHASE_PER_ROW: radians of phase added per row up the stalk.
+ */
+const SEAWEED_WAVE_AMPLITUDE_PX = 3;
+const SEAWEED_WAVE_ANGULAR_SPEED = 1.6;
+const SEAWEED_WAVE_PHASE_PER_ROW = 0.6;
+
+/**
  * Top-level Renderer. Wrapper pattern matches every other module:
  *
  *   <div h-screen w-screen>                ← carousel slot
@@ -621,6 +635,13 @@ function Seaweed({
 }) {
   const stalk = SEAWEED_SPECIES[params.speciesIndex] ?? SEAWEED_SPECIES[0];
   const preRef = useRef<HTMLPreElement>(null);
+  // One ref per stalk row so we can offset each row horizontally for
+  // the traveling-wave ripple. Direct DOM mutation avoids re-rendering.
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Top-to-bottom rows of the stalk. Index 0 is the tip; the last row
+  // is the rooted base.
+  const rows = useMemo(() => stalk.split("\n"), [stalk]);
 
   // Slower throttle for seaweed — the human eye can't tell the
   // difference between 20 and 60 fps on this kind of gentle sway.
@@ -641,6 +662,23 @@ function Seaweed({
     const t = state.clock.elapsedTime * params.speedMul + params.phase;
     const skewDeg = Math.sin(t) * 6;
     pre.style.transform = `skewX(${skewDeg}deg)`;
+
+    // Per-row ripple traveling up the stalk. Amplitude scales from 0 at
+    // the base to full at the tip so the root stays planted.
+    const waveTime =
+      state.clock.elapsedTime * SEAWEED_WAVE_ANGULAR_SPEED * params.speedMul +
+      params.phase;
+    const lastRow = rows.length - 1;
+    for (let i = 0; i < rowRefs.current.length; i++) {
+      const row = rowRefs.current[i];
+      if (!row) continue;
+      const fromBase = lastRow > 0 ? (lastRow - i) / lastRow : 1;
+      const offset =
+        SEAWEED_WAVE_AMPLITUDE_PX *
+        fromBase *
+        Math.sin(waveTime - i * SEAWEED_WAVE_PHASE_PER_ROW);
+      row.style.transform = `translateX(${offset.toFixed(2)}px)`;
+    }
   });
 
   return (
@@ -668,7 +706,19 @@ function Seaweed({
             transition: "transform 80ms linear",
           }}
         >
-          {stalk}
+          {rows.map((row, i) => (
+            <div
+              key={i}
+              ref={(el) => {
+                rowRefs.current[i] = el;
+              }}
+              // Smooth the per-row offset between throttled frames so the
+              // ripple stays fluid even at 15fps in performance mode.
+              style={{ whiteSpace: "pre", transition: "transform 120ms linear" }}
+            >
+              {row.length > 0 ? row : " "}
+            </div>
+          ))}
         </pre>
       </Html>
     </group>
