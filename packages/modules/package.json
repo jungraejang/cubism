@@ -22,15 +22,22 @@
     "zod": "latest"
   },
   "peerDependencies": {
+    "@react-three/drei": "*",
+    "@react-three/fiber": "*",
     "framer-motion": "*",
     "react": "^19",
-    "socket.io-client": "*"
+    "socket.io-client": "*",
+    "three": "*"
   },
   "devDependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
     "@types/react": "^19",
+    "@types/three": "^0.184.1",
     "framer-motion": "latest",
     "react": "19.2.4",
     "socket.io-client": "latest",
+    "three": "^0.184.0",
     "typescript": "latest"
   }
 }

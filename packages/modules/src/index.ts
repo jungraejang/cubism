@@ -5,6 +5,7 @@ import { weatherModule } from "./weather";
 import { spotifyModule } from "./spotify";
 import { visualizerModule } from "./visualizer";
 import { aiAssistantModule } from "./ai-assistant";
+import { asciiAquariumModule } from "./ascii-aquarium";
 
 /**
  * The single source of truth for all registered modules. Adding a new module
@@ -19,6 +20,7 @@ export const modules: readonly AnyCubismModule[] = [
   spotifyModule,
   visualizerModule,
   aiAssistantModule,
+  asciiAquariumModule,
 ];
 
 export * from "./types";
