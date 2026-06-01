@@ -85,7 +85,7 @@ const FISH_Z_SPEED = 0.5;
  * back-swimming fish never becomes an unreadable speck.
  */
 const FISH_DEPTH_SCALE_MIN = 0.55;
-const FISH_DEPTH_SCALE_MAX = 1.35;
+const FISH_DEPTH_SCALE_MAX = 1.1;
 
 /**
  * Camera-to-element distance factor for drei's `<Html>`. With camera
