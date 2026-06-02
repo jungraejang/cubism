@@ -35,9 +35,9 @@ const PIXEL_SHIFT_INTERVAL_MS = 60_000;
 const PIXEL_SHIFT_DURATION_S = 2;
 
 /**
- * In performance mode we run the entire R3F/Drei render loop on demand at a
- * fixed low frame rate. This caps not just our own useFrame callbacks, but
- * also drei Html's projection work, which is the long-running Pi cost.
+ * In performance mode our own animation callbacks use this interval. We do
+ * not put the Canvas itself in demand mode; runtime logs showed that path can
+ * stop producing R3F frames while the page/socket are still alive.
  */
 const PERFORMANCE_FRAME_INTERVAL_MS = 66;
 
@@ -319,7 +319,6 @@ export function AsciiAquariumRenderer({
         >
           <Canvas
             dpr={dpr}
-            frameloop={performanceMode ? "demand" : "always"}
             camera={{ position: [0, 0, 5], fov: 50, near: 0.1, far: 100 }}
             // Antialiasing on text is handled by the browser's font
             // rasterizer (HTML `<pre>`), so the GL antialias setting
@@ -440,7 +439,6 @@ function AquariumFrameDriver({
 }: {
   performanceMode: boolean;
 }) {
-  const invalidate = useThree((s) => s.invalidate);
   const frameCountRef = useRef(0);
   const lastReportFrameRef = useRef(0);
 
@@ -451,13 +449,7 @@ function AquariumFrameDriver({
 
   useEffect(() => {
     markAquariumFrame();
-    if (!performanceMode) return;
-
-    const id = window.setInterval(() => {
-      invalidate();
-    }, PERFORMANCE_FRAME_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [invalidate, performanceMode]);
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => {
