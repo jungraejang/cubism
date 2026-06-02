@@ -18,6 +18,49 @@ const AQUARIUM_STALL_RELOAD_MS = 20_000;
 const SOCKET_DISCONNECTED_RELOAD_MS = 60_000;
 const WATCHDOG_INTERVAL_MS = 5_000;
 
+// #region agent log
+function logRendererDebug(
+  hypothesisId: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  fetch("http://127.0.0.1:7781/ingest/15315dab-8f28-4100-9731-d02658e0d3cd", {
+    method: "POST",
+    keepalive: true,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "70f298",
+    },
+    body: JSON.stringify({
+      sessionId: "70f298",
+      runId: "freeze-investigation",
+      hypothesisId,
+      location: "apps/renderer/src/app/page.tsx",
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+
+function getRendererDebugMemory() {
+  const maybePerformance = performance as Performance & {
+    memory?: {
+      usedJSHeapSize?: number;
+      totalJSHeapSize?: number;
+      jsHeapSizeLimit?: number;
+    };
+  };
+  return maybePerformance.memory
+    ? {
+        usedJSHeapSize: maybePerformance.memory.usedJSHeapSize,
+        totalJSHeapSize: maybePerformance.memory.totalJSHeapSize,
+        jsHeapSizeLimit: maybePerformance.memory.jsHeapSizeLimit,
+      }
+    : null;
+}
+// #endregion
+
 export default function RendererHomePage() {
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
@@ -64,6 +107,14 @@ export default function RendererHomePage() {
     if (active?.module.manifest.id === "ascii-aquarium") {
       (window as CubismRendererWindow).__cubismAquariumLastFrame = Date.now();
     }
+    // #region agent log
+    logRendererDebug("H5", "renderer active module changed", {
+      activeModuleId: active?.module.manifest.id ?? null,
+      connected: connectedRef.current,
+      socketConnected: socket.connected,
+      socketId: socket.id ?? null,
+    });
+    // #endregion
   }, [active]);
 
   /**
@@ -81,6 +132,15 @@ export default function RendererHomePage() {
           disconnectedSince !== null &&
           now - disconnectedSince > SOCKET_DISCONNECTED_RELOAD_MS
         ) {
+          // #region agent log
+          logRendererDebug("H4", "watchdog reloading after socket disconnect", {
+            disconnectedForMs: now - disconnectedSince,
+            activeModuleId: activeIdRef.current,
+            socketConnected: socket.connected,
+            socketId: socket.id ?? null,
+            memory: getRendererDebugMemory(),
+          });
+          // #endregion
           window.location.reload();
         }
         return;
@@ -94,12 +154,45 @@ export default function RendererHomePage() {
         typeof lastFrame === "number" &&
         now - lastFrame > AQUARIUM_STALL_RELOAD_MS
       ) {
+        // #region agent log
+        logRendererDebug("H2,H4", "watchdog reloading after aquarium frame stall", {
+          lastFrameAgeMs: now - lastFrame,
+          activeModuleId: activeIdRef.current,
+          connected: connectedRef.current,
+          socketConnected: socket.connected,
+          socketId: socket.id ?? null,
+          visibilityState: document.visibilityState,
+          memory: getRendererDebugMemory(),
+        });
+        // #endregion
         window.location.reload();
       }
     }, WATCHDOG_INTERVAL_MS);
 
     return () => window.clearInterval(id);
-  }, []);
+  }, [socket]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const lastFrame = (window as CubismRendererWindow)
+        .__cubismAquariumLastFrame;
+      // #region agent log
+      logRendererDebug("H2,H3,H4", "renderer page health", {
+        activeModuleId: activeIdRef.current,
+        connected: connectedRef.current,
+        socketConnected: socket.connected,
+        socketId: socket.id ?? null,
+        lastAquariumFrameAgeMs:
+          typeof lastFrame === "number" ? Date.now() - lastFrame : null,
+        visibilityState: document.visibilityState,
+        canvasCount: document.querySelectorAll("canvas").length,
+        memory: getRendererDebugMemory(),
+      });
+      // #endregion
+    }, 60_000);
+
+    return () => window.clearInterval(id);
+  }, [socket]);
 
   useEffect(() => {
     socket.connect();
@@ -108,6 +201,12 @@ export default function RendererHomePage() {
       connectedRef.current = true;
       disconnectedSinceRef.current = null;
       setConnected(true);
+      // #region agent log
+      logRendererDebug("H3,H4", "renderer socket connected", {
+        socketId: socket.id ?? null,
+        activeModuleId: activeIdRef.current,
+      });
+      // #endregion
 
       socket.emit("client:register", {
         role: "renderer",
@@ -120,6 +219,13 @@ export default function RendererHomePage() {
       connectedRef.current = false;
       disconnectedSinceRef.current = Date.now();
       setConnected(false);
+      // #region agent log
+      logRendererDebug("H3,H4", "renderer socket disconnected", {
+        socketId: socket.id ?? null,
+        activeModuleId: activeIdRef.current,
+        memory: getRendererDebugMemory(),
+      });
+      // #endregion
     });
 
     socket.on("module:display", (payload) => {

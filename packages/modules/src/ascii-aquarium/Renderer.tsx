@@ -157,6 +157,48 @@ const SEAWEED_WAVE_AMPLITUDE_PX = 3;
 const SEAWEED_WAVE_ANGULAR_SPEED = 1.6;
 const SEAWEED_WAVE_PHASE_PER_ROW = 0.6;
 
+// #region agent log
+function logAquariumDebug(
+  hypothesisId: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  fetch("http://127.0.0.1:7781/ingest/15315dab-8f28-4100-9731-d02658e0d3cd", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "70f298",
+    },
+    body: JSON.stringify({
+      sessionId: "70f298",
+      runId: "freeze-investigation",
+      hypothesisId,
+      location: "packages/modules/src/ascii-aquarium/Renderer.tsx",
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+
+function getAquariumDebugMemory() {
+  const maybePerformance = performance as Performance & {
+    memory?: {
+      usedJSHeapSize?: number;
+      totalJSHeapSize?: number;
+      jsHeapSizeLimit?: number;
+    };
+  };
+  return maybePerformance.memory
+    ? {
+        usedJSHeapSize: maybePerformance.memory.usedJSHeapSize,
+        totalJSHeapSize: maybePerformance.memory.totalJSHeapSize,
+        jsHeapSizeLimit: maybePerformance.memory.jsHeapSizeLimit,
+      }
+    : null;
+}
+// #endregion
+
 /**
  * Top-level Renderer. Wrapper pattern matches every other module:
  *
@@ -211,6 +253,31 @@ export function AsciiAquariumRenderer({
   // DPR cap is the single biggest Pi win. On a high-DPR display, WebGL
   // would otherwise allocate a 2x or 3x backing store.
   const dpr = performanceMode ? 1 : Math.min(2, window.devicePixelRatio || 1);
+
+  useEffect(() => {
+    // #region agent log
+    logAquariumDebug("H5", "aquarium renderer config applied", {
+      fishCount,
+      seaweedCount,
+      bubbleRate,
+      bubblePoolSize,
+      performanceMode,
+      fishSpeed,
+      dpr,
+      htmlOverlayCount: document.querySelectorAll("[data-cubism-aquarium-html]")
+        .length,
+      memory: getAquariumDebugMemory(),
+    });
+    // #endregion
+  }, [
+    bubblePoolSize,
+    bubbleRate,
+    dpr,
+    fishCount,
+    fishSpeed,
+    performanceMode,
+    seaweedCount,
+  ]);
 
   return (
     <div
@@ -372,8 +439,11 @@ function AquariumFrameDriver({
   performanceMode: boolean;
 }) {
   const invalidate = useThree((s) => s.invalidate);
+  const frameCountRef = useRef(0);
+  const lastReportFrameRef = useRef(0);
 
   useFrame(() => {
+    frameCountRef.current += 1;
     markAquariumFrame();
   });
 
@@ -386,6 +456,32 @@ function AquariumFrameDriver({
     }, PERFORMANCE_FRAME_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [invalidate, performanceMode]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const frameCount = frameCountRef.current;
+      const framesSinceLastReport = frameCount - lastReportFrameRef.current;
+      lastReportFrameRef.current = frameCount;
+      const lastFrame = (window as Window & {
+        __cubismAquariumLastFrame?: number;
+      }).__cubismAquariumLastFrame;
+      // #region agent log
+      logAquariumDebug("H2,H3", "aquarium frame driver health", {
+        performanceMode,
+        frameCount,
+        framesSinceLastReport,
+        lastFrameAgeMs:
+          typeof lastFrame === "number" ? Date.now() - lastFrame : null,
+        visibilityState: document.visibilityState,
+        htmlOverlayCount: document.querySelectorAll("[data-cubism-aquarium-html]")
+          .length,
+        canvasCount: document.querySelectorAll("canvas").length,
+        memory: getAquariumDebugMemory(),
+      });
+      // #endregion
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [performanceMode]);
 
   return null;
 }
@@ -412,12 +508,24 @@ function WebGLContextGuard() {
     const handleLost = (event: Event) => {
       // Without this the context is gone for good and the scene freezes.
       event.preventDefault();
+      // #region agent log
+      logAquariumDebug("H1", "webgl context lost", {
+        memory: getAquariumDebugMemory(),
+        visibilityState: document.visibilityState,
+      });
+      // #endregion
       if (typeof console !== "undefined") {
         console.warn("[ascii-aquarium] WebGL context lost; awaiting restore…");
       }
     };
 
     const handleRestored = () => {
+      // #region agent log
+      logAquariumDebug("H1", "webgl context restored", {
+        memory: getAquariumDebugMemory(),
+        visibilityState: document.visibilityState,
+      });
+      // #endregion
       if (typeof console !== "undefined") {
         console.warn("[ascii-aquarium] WebGL context restored");
       }
@@ -746,6 +854,7 @@ function Fish({
         // captured by overlay divs while the user interacts with
         // controls elsewhere.
         style={{ pointerEvents: "none" }}
+        data-cubism-aquarium-html="fish"
       >
         <div
           ref={depthRef}
@@ -812,6 +921,7 @@ type SeaweedParams = {
   z: number;
   phase: number;
   speedMul: number;
+  heightScale: number;
 };
 
 function buildSeaweedParams(count: number): SeaweedParams[] {
@@ -826,6 +936,7 @@ function buildSeaweedParams(count: number): SeaweedParams[] {
       z: lerp(BOUND_MIN_Z, BOUND_MAX_Z * 0.4, Math.random()),
       phase: Math.random() * Math.PI * 2,
       speedMul: 0.9 + Math.random() * 0.3,
+      heightScale: lerp(0.7, 1.35, Math.random()),
     });
   }
   return out;
@@ -868,7 +979,9 @@ function Seaweed({
     // so the base stays planted on the seafloor while the tip drifts.
     const t = state.clock.elapsedTime * params.speedMul + params.phase;
     const skewDeg = Math.sin(t) * 6;
-    pre.style.transform = `skewX(${skewDeg}deg)`;
+    pre.style.transform = `skewX(${skewDeg}deg) scaleY(${params.heightScale.toFixed(
+      3,
+    )})`;
 
     if (performanceMode) return;
 
@@ -896,6 +1009,7 @@ function Seaweed({
         center
         distanceFactor={DISTANCE_FACTOR}
         style={{ pointerEvents: "none" }}
+        data-cubism-aquarium-html="seaweed"
       >
         <pre
           ref={preRef}
@@ -912,6 +1026,7 @@ function Seaweed({
             userSelect: "none",
             // Anchor sway at the base of the stalk.
             transformOrigin: "center bottom",
+            transform: `scaleY(${params.heightScale})`,
             transition: "transform 80ms linear",
           }}
         >
@@ -1029,6 +1144,7 @@ function Bubble({
         center
         distanceFactor={DISTANCE_FACTOR}
         style={{ pointerEvents: "none" }}
+        data-cubism-aquarium-html="bubble"
       >
         <pre
           style={{
