@@ -33,8 +33,8 @@ export type PixelFishSprite = {
  * on-screen size so a school reads as a mix of small/large fish.
  */
 export const PIXEL_FISH: PixelFishSprite[] = [
-  { src: `${BASE}/fish_yellow.gif`, faceRight: false, scale: 1.15 },
-  { src: `${BASE}/fish-nemo.png`, faceRight: false, scale: 0.95 },
+  { src: `${BASE}/fish_yellow.gif`, faceRight: true, scale: 1.15 },
+  { src: `${BASE}/fish-nemo.png`, faceRight: true, scale: 0.95 },
   { src: `${BASE}/fish-karp.png`, faceRight: true, scale: 1.1 },
   { src: `${BASE}/fish-goldfish.png`, faceRight: true, scale: 1.0 },
 ];
