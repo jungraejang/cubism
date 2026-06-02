@@ -317,30 +317,41 @@ export function AsciiAquariumRenderer({
             transformStyle: "flat",
           }}
         >
-          <Canvas
-            dpr={dpr}
-            camera={{ position: [0, 0, 5], fov: 50, near: 0.1, far: 100 }}
-            // Antialiasing on text is handled by the browser's font
-            // rasterizer (HTML `<pre>`), so the GL antialias setting
-            // is mostly cosmetic for any future 3D meshes we add.
-            gl={{
-              antialias: !performanceMode,
-              alpha: false,
-              // The Pi's GPU is the bottleneck and the scene is almost
-              // entirely DOM overlays — ask for the low-power path and
-              // don't bail out on the Pi's "major performance caveat".
-              powerPreference: "low-power",
-              failIfMajorPerformanceCaveat: false,
-            }}
-            style={{
-              background: backgroundColor,
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-            }}
-          >
-            <Scene
+          {performanceMode ? (
+            <DomPerformanceScene
+              fishCount={fishCount}
+              fishSpeed={fishSpeed}
+              seaweedCount={seaweedCount}
+              bubblePoolSize={bubblePoolSize}
+              seaweedColor={seaweedColor}
+              bubbleColor={bubbleColor}
+              backgroundColor={backgroundColor}
+            />
+          ) : (
+            <Canvas
+              dpr={dpr}
+              camera={{ position: [0, 0, 5], fov: 50, near: 0.1, far: 100 }}
+              // Antialiasing on text is handled by the browser's font
+              // rasterizer (HTML `<pre>`), so the GL antialias setting
+              // is mostly cosmetic for any future 3D meshes we add.
+              gl={{
+                antialias: true,
+                alpha: false,
+                // The Pi's GPU is the bottleneck and the scene is almost
+                // entirely DOM overlays — ask for the low-power path and
+                // don't bail out on the Pi's "major performance caveat".
+                powerPreference: "low-power",
+                failIfMajorPerformanceCaveat: false,
+              }}
+              style={{
+                background: backgroundColor,
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+              }}
+            >
+              <Scene
               fishCount={fishCount}
               fishSpeed={fishSpeed}
               seaweedCount={seaweedCount}
@@ -348,10 +359,194 @@ export function AsciiAquariumRenderer({
               seaweedColor={seaweedColor}
               bubbleColor={bubbleColor}
               performanceMode={performanceMode}
-            />
-          </Canvas>
+              />
+            </Canvas>
+          )}
         </motion.div>
       </motion.div>
+    </div>
+  );
+}
+
+function DomPerformanceScene({
+  fishCount,
+  fishSpeed,
+  seaweedCount,
+  bubblePoolSize,
+  seaweedColor,
+  bubbleColor,
+  backgroundColor,
+}: {
+  fishCount: number;
+  fishSpeed: number;
+  seaweedCount: number;
+  bubblePoolSize: number;
+  seaweedColor: string;
+  bubbleColor: string;
+  backgroundColor: string;
+}) {
+  const fishParams = useMemo(() => buildFishParams(fishCount), [fishCount]);
+  const seaweedParams = useMemo(
+    () => buildSeaweedParams(seaweedCount),
+    [seaweedCount],
+  );
+  const bubbleParams = useMemo(
+    () => buildBubbleParams(bubblePoolSize),
+    [bubblePoolSize],
+  );
+  const heartbeatCountRef = useRef(0);
+
+  useEffect(() => {
+    markAquariumFrame();
+    const id = window.setInterval(() => {
+      heartbeatCountRef.current += 1;
+      markAquariumFrame();
+    }, 1_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const lastFrame = (
+        window as Window & {
+          __cubismAquariumLastFrame?: number;
+        }
+      ).__cubismAquariumLastFrame;
+      // #region agent log
+      logAquariumDebug("H2,H3", "dom performance scene health", {
+        heartbeatCount: heartbeatCountRef.current,
+        lastFrameAgeMs:
+          typeof lastFrame === "number" ? Date.now() - lastFrame : null,
+        visibilityState: document.visibilityState,
+        domFishCount: fishParams.length,
+        domSeaweedCount: seaweedParams.length,
+        domBubbleCount: bubbleParams.length,
+        canvasCount: document.querySelectorAll("canvas").length,
+        memory: getAquariumDebugMemory(),
+      });
+      // #endregion
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [bubbleParams.length, fishParams.length, seaweedParams.length]);
+
+  return (
+    <div
+      className="absolute inset-0 overflow-hidden"
+      style={{ background: backgroundColor }}
+    >
+      <style>{`
+        @keyframes cubism-dom-fish-drift {
+          0% { transform: translate3d(0, 0, 0) scale(var(--depth-scale)) scaleX(var(--facing)); }
+          50% { transform: translate3d(var(--swim-x), var(--swim-y), 0) scale(var(--depth-scale)) scaleX(var(--facing)); }
+          100% { transform: translate3d(0, 0, 0) scale(var(--depth-scale)) scaleX(var(--facing)); }
+        }
+        @keyframes cubism-dom-seaweed-sway {
+          0%, 100% { transform: skewX(-5deg) scaleY(var(--height-scale)); }
+          50% { transform: skewX(5deg) scaleY(var(--height-scale)); }
+        }
+        @keyframes cubism-dom-bubble-rise {
+          0% { transform: translate3d(0, 20px, 0); opacity: 0; }
+          12% { opacity: 0.85; }
+          88% { opacity: 0.75; }
+          100% { transform: translate3d(var(--drift-x), -340px, 0); opacity: 0; }
+        }
+      `}</style>
+
+      {seaweedParams.map((params, i) => {
+        const stalk = SEAWEED_SPECIES[params.speciesIndex] ?? SEAWEED_SPECIES[0];
+        return (
+          <pre
+            key={`dom-seaweed-${i}`}
+            style={{
+              position: "absolute",
+              left: `${worldToPercent(params.rootX, BOUND_MIN_X, BOUND_MAX_X)}%`,
+              bottom: "10%",
+              margin: 0,
+              fontFamily: MONO_FONT,
+              fontSize: "13px",
+              lineHeight: 1,
+              color: seaweedColor,
+              whiteSpace: "pre",
+              textShadow: `0 0 4px ${seaweedColor}55`,
+              userSelect: "none",
+              transformOrigin: "center bottom",
+              animation: `cubism-dom-seaweed-sway ${(4.8 / params.speedMul).toFixed(
+                2,
+              )}s ease-in-out ${(-params.phase).toFixed(2)}s infinite`,
+              ["--height-scale" as string]: params.heightScale.toFixed(3),
+            }}
+          >
+            {stalk}
+          </pre>
+        );
+      })}
+
+      {fishParams.map((params, i) => {
+        const species = FISH_SPECIES[params.speciesIndex] ?? FISH_SPECIES[0];
+        const duration = Math.max(5, 10 / Math.max(0.25, fishSpeed));
+        const facing = params.target.x < params.initial.x ? -1 : 1;
+        return (
+          <pre
+            key={`dom-fish-${i}`}
+            style={{
+              position: "absolute",
+              left: `${worldToPercent(params.initial.x, BOUND_MIN_X, BOUND_MAX_X)}%`,
+              top: `${100 - worldToPercent(params.initial.y, BOUND_MIN_Y, BOUND_MAX_Y)}%`,
+              margin: 0,
+              fontFamily: MONO_FONT,
+              fontSize: `${Math.round(11 * species.scale)}px`,
+              lineHeight: 1,
+              color: params.color,
+              whiteSpace: "pre",
+              textShadow: `0 0 6px ${params.color}66`,
+              userSelect: "none",
+              animation: `cubism-dom-fish-drift ${duration.toFixed(
+                2,
+              )}s ease-in-out ${(-params.phaseMs / 1000).toFixed(2)}s infinite`,
+              ["--swim-x" as string]: `${((params.target.x - params.initial.x) * 24).toFixed(
+                1,
+              )}px`,
+              ["--swim-y" as string]: `${((params.target.y - params.initial.y) * -24).toFixed(
+                1,
+              )}px`,
+              ["--depth-scale" as string]: depthScaleForZ(params.initial.z).toFixed(
+                3,
+              ),
+              ["--facing" as string]: String(facing),
+            }}
+          >
+            {species.a}
+          </pre>
+        );
+      })}
+
+      {bubbleParams.map((params, i) => {
+        const glyph = BUBBLE_GLYPHS[params.glyphIndex] ?? BUBBLE_GLYPHS[0];
+        return (
+          <pre
+            key={`dom-bubble-${i}`}
+            style={{
+              position: "absolute",
+              left: `${worldToPercent(params.initial.x, BOUND_MIN_X, BOUND_MAX_X)}%`,
+              top: `${100 - worldToPercent(params.initial.y, BOUND_MIN_Y, BOUND_MAX_Y)}%`,
+              margin: 0,
+              fontFamily: MONO_FONT,
+              fontSize: `${10 + params.glyphIndex * 3}px`,
+              lineHeight: 1,
+              color: bubbleColor,
+              whiteSpace: "pre",
+              textShadow: `0 0 4px ${bubbleColor}88`,
+              userSelect: "none",
+              animation: `cubism-dom-bubble-rise ${(7 / params.riseSpeed).toFixed(
+                2,
+              )}s linear ${(-params.driftPhase).toFixed(2)}s infinite`,
+              ["--drift-x" as string]: `${Math.sin(params.driftPhase) * 48}px`,
+            }}
+          >
+            {glyph}
+          </pre>
+        );
+      })}
     </div>
   );
 }
@@ -1174,4 +1369,12 @@ function markAquariumFrame() {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+function worldToPercent(value: number, min: number, max: number): number {
+  const span = max - min || 1;
+  const percent = ((value - min) / span) * 100;
+  if (percent < 0) return 0;
+  if (percent > 100) return 100;
+  return percent;
 }
