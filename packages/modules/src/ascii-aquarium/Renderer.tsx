@@ -8,7 +8,13 @@
  */
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { motion } from "framer-motion";
 import type { RendererProps } from "../types";
 import {
@@ -56,7 +62,7 @@ const BOUND_MAX_Y = 1.5;
 const FISH_Z_MIN = -0.25;
 const FISH_Z_MAX = 1;
 
-const FISH_DEPTH_SCALE_MIN = 0.55;
+const FISH_DEPTH_SCALE_MIN = 0.85;
 const FISH_DEPTH_SCALE_MAX = 1.1;
 
 const MONO_FONT =
@@ -241,9 +247,7 @@ function AquariumScene({
           const seaweedPx = DOM_PIXEL_SEAWEED_PX * seaweedScale;
           // Pad for the skewX sway: the tip can swing out by ~tan(5°) of the
           // (height-scaled) sprite height, so reserve that much on each side.
-          const skewPadPx = Math.ceil(
-            seaweedPx * params.heightScale * 0.09,
-          );
+          const skewPadPx = Math.ceil(seaweedPx * params.heightScale * 0.09);
           const pos = spriteCenterX(
             worldToPercent(params.rootX, BOUND_MIN_X, BOUND_MAX_X),
             seaweedPx,
@@ -273,7 +277,8 @@ function AquariumScene({
           );
         }
 
-        const stalk = SEAWEED_SPECIES[params.speciesIndex] ?? SEAWEED_SPECIES[0];
+        const stalk =
+          SEAWEED_SPECIES[params.speciesIndex] ?? SEAWEED_SPECIES[0];
         return (
           <pre
             key={`seaweed-${i}`}
@@ -326,7 +331,9 @@ function AquariumScene({
             params.glyphIndex * DOM_PIXEL_BUBBLE_SIZE_STEP_PX;
           // Reserve room for the horizontal drift so a bubble never slides out
           // the side as it rises (it still exits the top, where it fades out).
-          const driftPadPx = Math.ceil(Math.abs(Math.sin(params.driftPhase) * 48));
+          const driftPadPx = Math.ceil(
+            Math.abs(Math.sin(params.driftPhase) * 48),
+          );
           const pos = spriteCenterX(
             worldToPercent(params.initial.x, BOUND_MIN_X, BOUND_MAX_X),
             size,
