@@ -116,8 +116,12 @@ const MONO_FONT =
  * distanceFactor scaling, so it needs its own larger screen-space font sizes.
  */
 const DOM_FISH_FONT_PX = 26;
-const DOM_SEAWEED_FONT_PX = 30;
+const DOM_SEAWEED_FONT_PX = 23;
 const DOM_BUBBLE_FONT_BASE_PX = 18;
+const DOM_FISH_BOUND_MIN_X = BOUND_MIN_X + 0.85;
+const DOM_FISH_BOUND_MAX_X = BOUND_MAX_X - 1.1;
+const DOM_FISH_BOUND_MIN_Y = BOUND_MIN_Y + 0.65;
+const DOM_FISH_BOUND_MAX_Y = BOUND_MAX_Y - 0.55;
 
 /**
  * Body-undulation ("snake swim") parameters. Each fish character is
@@ -446,8 +450,8 @@ function DomPerformanceFish({
   const species = FISH_SPECIES[params.speciesIndex] ?? FISH_SPECIES[0];
   const frameChars = useMemo(() => species.a.split(""), [species.a]);
   const [state, setState] = useState(() => ({
-    x: params.initial.x,
-    y: params.initial.y,
+    x: clamp(params.initial.x, DOM_FISH_BOUND_MIN_X, DOM_FISH_BOUND_MAX_X),
+    y: clamp(params.initial.y, DOM_FISH_BOUND_MIN_Y, DOM_FISH_BOUND_MAX_Y),
     z: params.initial.z,
     facing: params.target.x < params.initial.x ? -1 : 1,
     durationMs: 2800,
@@ -482,24 +486,24 @@ function DomPerformanceFish({
         const maxStepY = 0.65;
         let nextX = clamp(
           prev.x + (Math.random() - 0.5) * maxStepX * 2,
-          BOUND_MIN_X + 0.25,
-          BOUND_MAX_X - 0.25,
+          DOM_FISH_BOUND_MIN_X,
+          DOM_FISH_BOUND_MAX_X,
         );
         let nextY = clamp(
           prev.y + (Math.random() - 0.5) * maxStepY * 2,
-          BOUND_MIN_Y + 0.65,
-          BOUND_MAX_Y - 0.45,
+          DOM_FISH_BOUND_MIN_Y,
+          DOM_FISH_BOUND_MAX_Y,
         );
         const separation = getDomFishSeparation(index, positions, nextX, nextY);
         nextX = clamp(
           nextX + separation.x,
-          BOUND_MIN_X + 0.25,
-          BOUND_MAX_X - 0.25,
+          DOM_FISH_BOUND_MIN_X,
+          DOM_FISH_BOUND_MAX_X,
         );
         nextY = clamp(
           nextY + separation.y,
-          BOUND_MIN_Y + 0.65,
-          BOUND_MAX_Y - 0.45,
+          DOM_FISH_BOUND_MIN_Y,
+          DOM_FISH_BOUND_MAX_Y,
         );
         const facing = nextX < prev.x ? -1 : 1;
         positions[index] = { x: nextX, y: nextY };
@@ -527,8 +531,16 @@ function DomPerformanceFish({
     <div
       style={{
         position: "absolute",
-        left: `${worldToPercent(state.x, BOUND_MIN_X, BOUND_MAX_X)}%`,
-        top: `${100 - worldToPercent(state.y, BOUND_MIN_Y, BOUND_MAX_Y)}%`,
+        left: `${clamp(
+          worldToPercent(state.x, BOUND_MIN_X, BOUND_MAX_X),
+          9,
+          78,
+        )}%`,
+        top: `${clamp(
+          100 - worldToPercent(state.y, BOUND_MIN_Y, BOUND_MAX_Y),
+          10,
+          82,
+        )}%`,
         margin: 0,
         transform: `scale(${depthScaleForZ(state.z).toFixed(3)})`,
         transformOrigin: "center center",
