@@ -5,8 +5,19 @@ import { OrientationFields } from "../_lib/orientation";
  * ASCII aquarium configuration. Counts are validated server-side via Zod so
  * a malformed payload can't push the Pi into rendering excessive entities.
  */
+/**
+ * Visual style for the aquarium.
+ *  - `ascii`: monospace glyph art (the original look).
+ *  - `pixel`: 8-bit PNG sprites served from the renderer's public folder.
+ * Both share the same motion system; only the rendered element differs.
+ */
+export const AQUARIUM_STYLES = ["ascii", "pixel"] as const;
+export type AquariumStyle = (typeof AQUARIUM_STYLES)[number];
+
 export const AsciiAquariumConfigSchema = z.object({
-  /** How many fish the aquarium attempts to render. Hard-capped by perf mode. */
+  /** Which art style the aquarium renders with. */
+  style: z.enum(AQUARIUM_STYLES).optional(),
+  /** How many fish the aquarium attempts to render. */
   fishCount: z.number().int().min(0).max(20).optional(),
   /**
    * Multiplier on the base fish swim speed. 1 = the original tuning; the
@@ -34,6 +45,7 @@ export const AsciiAquariumConfigSchema = z.object({
 
 export type AsciiAquariumConfig = z.infer<typeof AsciiAquariumConfigSchema>;
 
+export const DEFAULT_STYLE: AquariumStyle = "pixel";
 export const DEFAULT_FISH_COUNT = 6;
 export const DEFAULT_FISH_SPEED = 1;
 export const DEFAULT_SEAWEED_COUNT = 4;

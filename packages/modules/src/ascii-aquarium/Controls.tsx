@@ -11,9 +11,16 @@ import {
   DEFAULT_FISH_SPEED,
   DEFAULT_SEAWEED_COLOR,
   DEFAULT_SEAWEED_COUNT,
+  DEFAULT_STYLE,
   NORMAL_CAPS,
+  type AquariumStyle,
   type AsciiAquariumConfig,
 } from "./config";
+
+const STYLE_OPTIONS: { value: AquariumStyle; label: string; hint: string }[] = [
+  { value: "pixel", label: "Pixel art", hint: "8-bit sprite fish & kelp" },
+  { value: "ascii", label: "ASCII", hint: "Monospace glyph art" },
+];
 
 export function AsciiAquariumControls({
   config,
@@ -31,9 +38,40 @@ export function AsciiAquariumControls({
   const backgroundColor = config.backgroundColor ?? DEFAULT_BACKGROUND_COLOR;
   const seaweedColor = config.seaweedColor ?? DEFAULT_SEAWEED_COLOR;
   const bubbleColor = config.bubbleColor ?? DEFAULT_BUBBLE_COLOR;
+  const style = config.style ?? DEFAULT_STYLE;
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        <span className="text-zinc-400">Style</span>
+        <div className="flex flex-wrap gap-2">
+          {STYLE_OPTIONS.map((option) => {
+            const active = style === option.value;
+            return (
+              <motion.button
+                key={option.value}
+                type="button"
+                whileTap={{ scale: 0.95 }}
+                onClick={() => patch({ style: option.value })}
+                aria-pressed={active}
+                className={`flex flex-col items-start rounded-lg px-3 py-2 text-sm ${
+                  active
+                    ? "bg-cyan-400 text-zinc-950"
+                    : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                }`}
+              >
+                <span>{option.label}</span>
+                <span
+                  className={`text-xs ${active ? "text-zinc-800" : "text-zinc-500"}`}
+                >
+                  {option.hint}
+                </span>
+              </motion.button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-3">
         <span className="text-zinc-400">Population</span>
 
@@ -137,8 +175,9 @@ export function AsciiAquariumControls({
           />
         </div>
         <p className="text-xs text-zinc-500">
-          Fish cycle through a built-in palette of six vibrant colors so a
-          school doesn&apos;t look like clones.
+          {style === "pixel"
+            ? "Pixel art uses its own baked-in sprite colors — only the background applies in this style."
+            : "Fish cycle through a built-in palette of six vibrant colors so a school doesn't look like clones."}
         </p>
       </div>
 

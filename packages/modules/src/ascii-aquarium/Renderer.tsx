@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+/*
+ * Plain <img> is intentional here, not next/image: the pixel sprites are tiny
+ * static PNGs that must render with nearest-neighbor scaling (image-rendering:
+ * pixelated) and no optimization server — next/image would add overhead and
+ * defeat the crisp 8-bit look on the Pi.
+ */
+/* eslint-disable @next/next/no-img-element */
+
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { motion } from "framer-motion";
 import type { RendererProps } from "../types";
 import {
@@ -11,6 +19,8 @@ import {
   DEFAULT_FISH_SPEED,
   DEFAULT_SEAWEED_COLOR,
   DEFAULT_SEAWEED_COUNT,
+  DEFAULT_STYLE,
+  type AquariumStyle,
   type AsciiAquariumConfig,
 } from "./config";
 import {
@@ -20,6 +30,7 @@ import {
   SEAWEED_SPECIES,
   WIGGLE_PERIOD_MS,
 } from "./asciiArt";
+import { PIXEL_BUBBLE, PIXEL_FISH, PIXEL_SEAWEED } from "./pixelArt";
 
 /**
  * Pixel-shift parameters — same trick the clock uses to spread burn-in
@@ -51,6 +62,17 @@ const MONO_FONT =
 const DOM_FISH_FONT_PX = 26;
 const DOM_SEAWEED_FONT_PX = 23;
 const DOM_BUBBLE_FONT_BASE_PX = 18;
+
+/**
+ * Pixel-art ("pixel" style) sizing in screen px. Sprites are square 48×48
+ * and drawn at a fixed size with nearest-neighbor scaling, so the Pi never
+ * filters a large bitmap.
+ */
+const DOM_PIXEL_FISH_PX = 92;
+const DOM_PIXEL_SEAWEED_PX = 148;
+const DOM_PIXEL_BUBBLE_BASE_PX = 10;
+const DOM_PIXEL_BUBBLE_SIZE_STEP_PX = 3;
+
 const DOM_FISH_BOUND_MIN_X = BOUND_MIN_X + 0.85;
 const DOM_FISH_BOUND_MAX_X = BOUND_MAX_X - 1.1;
 const DOM_FISH_BOUND_MIN_Y = BOUND_MIN_Y + 0.65;
@@ -68,6 +90,7 @@ export function AsciiAquariumRenderer({
   const scaleX = config.flipHorizontal ? -1 : 1;
   const scaleY = config.flipVertical ? -1 : 1;
 
+  const style = config.style ?? DEFAULT_STYLE;
   const fishCount = config.fishCount ?? DEFAULT_FISH_COUNT;
   const fishSpeed = config.fishSpeed ?? DEFAULT_FISH_SPEED;
   const seaweedCount = config.seaweedCount ?? DEFAULT_SEAWEED_COUNT;
@@ -116,6 +139,7 @@ export function AsciiAquariumRenderer({
           }}
         >
           <AquariumScene
+            style={style}
             fishCount={fishCount}
             fishSpeed={fishSpeed}
             seaweedCount={seaweedCount}
@@ -131,6 +155,7 @@ export function AsciiAquariumRenderer({
 }
 
 function AquariumScene({
+  style,
   fishCount,
   fishSpeed,
   seaweedCount,
@@ -139,6 +164,7 @@ function AquariumScene({
   bubbleColor,
   backgroundColor,
 }: {
+  style: AquariumStyle;
   fishCount: number;
   fishSpeed: number;
   seaweedCount: number;
@@ -175,6 +201,10 @@ function AquariumScene({
           0%, 100% { transform: translateY(calc(var(--wave-amp) * -1)); }
           50% { transform: translateY(var(--wave-amp)); }
         }
+        @keyframes cubism-pixel-fish-bob {
+          0%, 100% { transform: translateY(-2px) rotate(-1.5deg); }
+          50% { transform: translateY(2px) rotate(1.5deg); }
+        }
         @keyframes cubism-dom-bubble-rise {
           0% { transform: translate3d(0, 20px, 0); opacity: 0; }
           12% { opacity: 0.85; }
@@ -184,13 +214,56 @@ function AquariumScene({
       `}</style>
 
       {seaweedParams.map((params, i) => {
+        const sway = `cubism-dom-seaweed-sway ${(4.8 / params.speedMul).toFixed(
+          2,
+        )}s ease-in-out ${(-params.phase).toFixed(2)}s infinite`;
+        const left = `${worldToPercent(params.rootX, BOUND_MIN_X, BOUND_MAX_X)}%`;
+
+        if (style === "pixel") {
+          const sprite =
+            PIXEL_SEAWEED[params.speciesIndex % PIXEL_SEAWEED.length] ??
+            PIXEL_SEAWEED[0];
+          // Pad for the skewX sway: the tip can swing out by ~tan(5°) of the
+          // (height-scaled) sprite height, so reserve that much on each side.
+          const skewPadPx = Math.ceil(
+            DOM_PIXEL_SEAWEED_PX * params.heightScale * 0.09,
+          );
+          const pos = spriteCenterX(
+            worldToPercent(params.rootX, BOUND_MIN_X, BOUND_MAX_X),
+            DOM_PIXEL_SEAWEED_PX,
+            skewPadPx,
+          );
+          return (
+            <img
+              key={`seaweed-${i}`}
+              src={sprite}
+              alt=""
+              draggable={false}
+              decoding="async"
+              style={{
+                position: "absolute",
+                left: pos.left,
+                marginLeft: pos.marginLeft,
+                bottom: "8%",
+                width: `${DOM_PIXEL_SEAWEED_PX}px`,
+                height: `${DOM_PIXEL_SEAWEED_PX}px`,
+                imageRendering: "pixelated",
+                userSelect: "none",
+                transformOrigin: "center bottom",
+                animation: sway,
+                ["--height-scale" as string]: params.heightScale.toFixed(3),
+              }}
+            />
+          );
+        }
+
         const stalk = SEAWEED_SPECIES[params.speciesIndex] ?? SEAWEED_SPECIES[0];
         return (
           <pre
             key={`seaweed-${i}`}
             style={{
               position: "absolute",
-              left: `${worldToPercent(params.rootX, BOUND_MIN_X, BOUND_MAX_X)}%`,
+              left,
               bottom: "10%",
               margin: 0,
               fontFamily: MONO_FONT,
@@ -201,9 +274,7 @@ function AquariumScene({
               textShadow: `0 0 4px ${seaweedColor}55`,
               userSelect: "none",
               transformOrigin: "center bottom",
-              animation: `cubism-dom-seaweed-sway ${(4.8 / params.speedMul).toFixed(
-                2,
-              )}s ease-in-out ${(-params.phase).toFixed(2)}s infinite`,
+              animation: sway,
               ["--height-scale" as string]: params.heightScale.toFixed(3),
             }}
           >
@@ -215,6 +286,7 @@ function AquariumScene({
       {fishParams.map((params, i) => (
         <AquariumFish
           key={`fish-${i}`}
+          style={style}
           params={params}
           index={i}
           positions={fishPositionsRef.current}
@@ -223,14 +295,56 @@ function AquariumScene({
       ))}
 
       {bubbleParams.map((params, i) => {
+        const left = `${worldToPercent(params.initial.x, BOUND_MIN_X, BOUND_MAX_X)}%`;
+        const top = `${100 - worldToPercent(params.initial.y, BOUND_MIN_Y, BOUND_MAX_Y)}%`;
+        const rise = `cubism-dom-bubble-rise ${(7 / params.riseSpeed).toFixed(
+          2,
+        )}s linear ${(-params.driftPhase).toFixed(2)}s infinite`;
+        const driftX = `${Math.sin(params.driftPhase) * 48}px`;
+
+        if (style === "pixel") {
+          const size =
+            DOM_PIXEL_BUBBLE_BASE_PX +
+            params.glyphIndex * DOM_PIXEL_BUBBLE_SIZE_STEP_PX;
+          // Reserve room for the horizontal drift so a bubble never slides out
+          // the side as it rises (it still exits the top, where it fades out).
+          const driftPadPx = Math.ceil(Math.abs(Math.sin(params.driftPhase) * 48));
+          const pos = spriteCenterX(
+            worldToPercent(params.initial.x, BOUND_MIN_X, BOUND_MAX_X),
+            size,
+            driftPadPx,
+          );
+          return (
+            <img
+              key={`bubble-${i}`}
+              src={PIXEL_BUBBLE}
+              alt=""
+              draggable={false}
+              decoding="async"
+              style={{
+                position: "absolute",
+                left: pos.left,
+                marginLeft: pos.marginLeft,
+                top,
+                width: `${size}px`,
+                height: `${size}px`,
+                imageRendering: "pixelated",
+                userSelect: "none",
+                animation: rise,
+                ["--drift-x" as string]: driftX,
+              }}
+            />
+          );
+        }
+
         const glyph = BUBBLE_GLYPHS[params.glyphIndex] ?? BUBBLE_GLYPHS[0];
         return (
           <pre
             key={`bubble-${i}`}
             style={{
               position: "absolute",
-              left: `${worldToPercent(params.initial.x, BOUND_MIN_X, BOUND_MAX_X)}%`,
-              top: `${100 - worldToPercent(params.initial.y, BOUND_MIN_Y, BOUND_MAX_Y)}%`,
+              left,
+              top,
               margin: 0,
               fontFamily: MONO_FONT,
               fontSize: `${DOM_BUBBLE_FONT_BASE_PX + params.glyphIndex * 6}px`,
@@ -239,10 +353,8 @@ function AquariumScene({
               whiteSpace: "pre",
               textShadow: `0 0 4px ${bubbleColor}88`,
               userSelect: "none",
-              animation: `cubism-dom-bubble-rise ${(7 / params.riseSpeed).toFixed(
-                2,
-              )}s linear ${(-params.driftPhase).toFixed(2)}s infinite`,
-              ["--drift-x" as string]: `${Math.sin(params.driftPhase) * 48}px`,
+              animation: rise,
+              ["--drift-x" as string]: driftX,
             }}
           >
             {glyph}
@@ -254,17 +366,20 @@ function AquariumScene({
 }
 
 function AquariumFish({
+  style,
   params,
   index,
   positions,
   fishSpeed,
 }: {
+  style: AquariumStyle;
   params: FishParams;
   index: number;
   positions: FishPositions;
   fishSpeed: number;
 }) {
   const species = FISH_SPECIES[params.speciesIndex] ?? FISH_SPECIES[0];
+  const sprite = PIXEL_FISH[index % PIXEL_FISH.length] ?? PIXEL_FISH[0];
   const frameChars = useMemo(() => species.a.split(""), [species.a]);
   const [state, setState] = useState(() => ({
     x: clamp(params.initial.x, DOM_FISH_BOUND_MIN_X, DOM_FISH_BOUND_MAX_X),
@@ -344,22 +459,40 @@ function AquariumFish({
     };
   }, [fishSpeed, index, params.phaseMs, positions]);
 
+  const depthScale = depthScaleForZ(state.z);
+  const xPct = worldToPercent(state.x, BOUND_MIN_X, BOUND_MAX_X);
+  const yPct = 100 - worldToPercent(state.y, BOUND_MIN_Y, BOUND_MAX_Y);
+
+  // Position the fish by its CENTER and clamp in CSS so the whole sprite stays
+  // inside the viewport. The depth `scale` transform expands around the center,
+  // so the clamp bound uses the scaled half-size; `margin` (which centers the
+  // box) uses the unscaled half since layout happens before the transform.
+  let positionStyle: CSSProperties;
+  if (style === "pixel") {
+    const fishPx = Math.round(DOM_PIXEL_FISH_PX * sprite.scale);
+    const half = fishPx / 2;
+    // Small pad for the bob (tiny rotate + translateY) overshoot.
+    const bound = half * depthScale + 6;
+    positionStyle = {
+      left: `clamp(${bound}px, ${xPct}%, calc(100% - ${bound}px))`,
+      top: `clamp(${bound}px, ${yPct}%, calc(100% - ${bound}px))`,
+      marginLeft: `-${half}px`,
+      marginTop: `-${half}px`,
+    };
+  } else {
+    positionStyle = {
+      left: `${clamp(xPct, 9, 78)}%`,
+      top: `${clamp(yPct, 10, 82)}%`,
+      margin: 0,
+    };
+  }
+
   return (
     <div
       style={{
         position: "absolute",
-        left: `${clamp(
-          worldToPercent(state.x, BOUND_MIN_X, BOUND_MAX_X),
-          9,
-          78,
-        )}%`,
-        top: `${clamp(
-          100 - worldToPercent(state.y, BOUND_MIN_Y, BOUND_MAX_Y),
-          10,
-          82,
-        )}%`,
-        margin: 0,
-        transform: `scale(${depthScaleForZ(state.z).toFixed(3)})`,
+        ...positionStyle,
+        transform: `scale(${depthScale.toFixed(3)})`,
         transformOrigin: "center center",
         transition: `left ${state.durationMs.toFixed(
           0,
@@ -368,38 +501,68 @@ function AquariumFish({
         )}ms ease-in-out, transform ${state.durationMs.toFixed(0)}ms ease-in-out`,
       }}
     >
-      <pre
-        style={{
-          margin: 0,
-          fontFamily: MONO_FONT,
-          fontSize: `${Math.round(DOM_FISH_FONT_PX * species.scale)}px`,
-          lineHeight: 1,
-          color: params.color,
-          whiteSpace: "pre",
-          textShadow: `0 0 6px ${params.color}66`,
-          userSelect: "none",
-          transform: `scaleX(${state.facing})`,
-          transformOrigin: "center center",
-        }}
-      >
-        {frameChars.map((ch, i) => (
-          <span
-            key={`${i}-${ch}`}
+      {style === "pixel" ? (
+        // Flip so the sprite faces its travel direction. `faceRight` art
+        // flips on a left heading; left-facing art flips on a right heading.
+        <div
+          style={{
+            transform: `scaleX(${sprite.faceRight ? state.facing : -state.facing})`,
+            transformOrigin: "center center",
+            transition: "transform 200ms ease",
+          }}
+        >
+          <img
+            src={sprite.src}
+            alt=""
+            draggable={false}
+            decoding="async"
             style={{
-              display: "inline-block",
-              animation: `cubism-dom-fish-wave 520ms ease-in-out ${(
-                -i * 0.07
-              ).toFixed(2)}s infinite`,
-              ["--wave-amp" as string]: `${Math.max(
+              display: "block",
+              width: `${Math.round(DOM_PIXEL_FISH_PX * sprite.scale)}px`,
+              height: `${Math.round(DOM_PIXEL_FISH_PX * sprite.scale)}px`,
+              imageRendering: "pixelated",
+              userSelect: "none",
+              // Gentle buoyant bob; per-fish phase keeps the school out of sync.
+              animation: `cubism-pixel-fish-bob ${(2.4).toFixed(
                 1,
-                DOM_FISH_FONT_PX * species.scale * 0.08,
-              ).toFixed(1)}px`,
+              )}s ease-in-out ${(-(params.phaseMs / 1000)).toFixed(2)}s infinite`,
             }}
-          >
-            {ch}
-          </span>
-        ))}
-      </pre>
+          />
+        </div>
+      ) : (
+        <pre
+          style={{
+            margin: 0,
+            fontFamily: MONO_FONT,
+            fontSize: `${Math.round(DOM_FISH_FONT_PX * species.scale)}px`,
+            lineHeight: 1,
+            color: params.color,
+            whiteSpace: "pre",
+            textShadow: `0 0 6px ${params.color}66`,
+            userSelect: "none",
+            transform: `scaleX(${state.facing})`,
+            transformOrigin: "center center",
+          }}
+        >
+          {frameChars.map((ch, i) => (
+            <span
+              key={`${i}-${ch}`}
+              style={{
+                display: "inline-block",
+                animation: `cubism-dom-fish-wave 520ms ease-in-out ${(
+                  -i * 0.07
+                ).toFixed(2)}s infinite`,
+                ["--wave-amp" as string]: `${Math.max(
+                  1,
+                  DOM_FISH_FONT_PX * species.scale * 0.08,
+                ).toFixed(1)}px`,
+              }}
+            >
+              {ch}
+            </span>
+          ))}
+        </pre>
+      )}
     </div>
   );
 }
@@ -508,6 +671,43 @@ function worldToPercent(value: number, min: number, max: number): number {
   if (percent < 0) return 0;
   if (percent > 100) return 100;
   return percent;
+}
+
+/**
+ * Centers a fixed-size sprite on a horizontal percentage and clamps it so the
+ * full sprite (plus an optional motion safety margin) always stays inside the
+ * viewport — no matter the viewport's pixel size. Returns inline-style props.
+ *
+ * Centering is done with `marginLeft` (not `transform`) so it never fights the
+ * sway / scale / flip transforms applied to the same elements. The `clamp()`
+ * keeps the sprite's center within `[bound, 100% - bound]`, where `bound` is
+ * half the rendered width plus `padPx` (room for sway/drift overshoot).
+ */
+function spriteCenterX(
+  pct: number,
+  renderedWidthPx: number,
+  padPx = 0,
+): { left: string; marginLeft: string } {
+  const half = renderedWidthPx / 2;
+  const bound = half + padPx;
+  return {
+    left: `clamp(${bound}px, ${pct}%, calc(100% - ${bound}px))`,
+    marginLeft: `-${half}px`,
+  };
+}
+
+/** Vertical counterpart of {@link spriteCenterX}. */
+function spriteCenterY(
+  pct: number,
+  renderedHeightPx: number,
+  padPx = 0,
+): { top: string; marginTop: string } {
+  const half = renderedHeightPx / 2;
+  const bound = half + padPx;
+  return {
+    top: `clamp(${bound}px, ${pct}%, calc(100% - ${bound}px))`,
+    marginTop: `-${half}px`,
+  };
 }
 
 function getFishSeparation(
