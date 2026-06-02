@@ -7,10 +7,13 @@ import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BUBBLE_COLOR,
   DEFAULT_BUBBLE_RATE,
+  DEFAULT_BUBBLE_SPEED,
   DEFAULT_FISH_COUNT,
+  DEFAULT_FISH_SCALE,
   DEFAULT_FISH_SPEED,
   DEFAULT_SEAWEED_COLOR,
   DEFAULT_SEAWEED_COUNT,
+  DEFAULT_SEAWEED_SCALE,
   DEFAULT_STYLE,
   NORMAL_CAPS,
   type AquariumStyle,
@@ -33,8 +36,11 @@ export function AsciiAquariumControls({
   const rotation = config.rotation ?? 0;
   const fishCount = config.fishCount ?? DEFAULT_FISH_COUNT;
   const fishSpeed = config.fishSpeed ?? DEFAULT_FISH_SPEED;
+  const fishScale = config.fishScale ?? DEFAULT_FISH_SCALE;
   const seaweedCount = config.seaweedCount ?? DEFAULT_SEAWEED_COUNT;
+  const seaweedScale = config.seaweedScale ?? DEFAULT_SEAWEED_SCALE;
   const bubbleRate = config.bubbleRate ?? DEFAULT_BUBBLE_RATE;
+  const bubbleSpeed = config.bubbleSpeed ?? DEFAULT_BUBBLE_SPEED;
   const backgroundColor = config.backgroundColor ?? DEFAULT_BACKGROUND_COLOR;
   const seaweedColor = config.seaweedColor ?? DEFAULT_SEAWEED_COLOR;
   const bubbleColor = config.bubbleColor ?? DEFAULT_BUBBLE_COLOR;
@@ -113,6 +119,25 @@ export function AsciiAquariumControls({
 
         <label className="flex flex-col gap-1 text-sm text-zinc-300">
           <span className="flex items-baseline justify-between">
+            <span>Fish size</span>
+            <span className="font-mono text-xs text-zinc-500">
+              {fishScale.toFixed(2)}×
+            </span>
+          </span>
+          <input
+            type="range"
+            min={0.4}
+            max={2.5}
+            step={0.1}
+            value={fishScale}
+            onChange={(event) =>
+              patch({ fishScale: Number(event.target.value) })
+            }
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm text-zinc-300">
+          <span className="flex items-baseline justify-between">
             <span>Seaweed</span>
             <span className="font-mono text-xs text-zinc-500">
               {seaweedCount}
@@ -132,6 +157,25 @@ export function AsciiAquariumControls({
 
         <label className="flex flex-col gap-1 text-sm text-zinc-300">
           <span className="flex items-baseline justify-between">
+            <span>Seaweed size</span>
+            <span className="font-mono text-xs text-zinc-500">
+              {seaweedScale.toFixed(2)}×
+            </span>
+          </span>
+          <input
+            type="range"
+            min={0.4}
+            max={2.5}
+            step={0.1}
+            value={seaweedScale}
+            onChange={(event) =>
+              patch({ seaweedScale: Number(event.target.value) })
+            }
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm text-zinc-300">
+          <span className="flex items-baseline justify-between">
             <span>Bubble rate (per min)</span>
             <span className="font-mono text-xs text-zinc-500">
               {bubbleRate}
@@ -145,6 +189,25 @@ export function AsciiAquariumControls({
             value={bubbleRate}
             onChange={(event) =>
               patch({ bubbleRate: Number(event.target.value) })
+            }
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm text-zinc-300">
+          <span className="flex items-baseline justify-between">
+            <span>Bubble speed</span>
+            <span className="font-mono text-xs text-zinc-500">
+              {bubbleSpeed.toFixed(2)}×
+            </span>
+          </span>
+          <input
+            type="range"
+            min={0.25}
+            max={3}
+            step={0.25}
+            value={bubbleSpeed}
+            onChange={(event) =>
+              patch({ bubbleSpeed: Number(event.target.value) })
             }
           />
         </label>

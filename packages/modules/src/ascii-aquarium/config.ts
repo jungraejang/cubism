@@ -24,14 +24,23 @@ export const AsciiAquariumConfigSchema = z.object({
    * slider exposes a 0.25–2.5 range so the tank can read as calm or lively.
    */
   fishSpeed: z.number().min(0.1).max(5).optional(),
+  /** Multiplier on the base fish size. 1 = default tuning. */
+  fishScale: z.number().min(0.4).max(2.5).optional(),
   /** How many seaweed stalks anchor along the bottom. */
   seaweedCount: z.number().int().min(0).max(12).optional(),
+  /** Multiplier on the base seaweed size. 1 = default tuning. */
+  seaweedScale: z.number().min(0.4).max(2.5).optional(),
   /**
    * Bubble spawn pressure, expressed in bubbles-per-minute. The renderer
    * derives a fixed bubble pool size from this (no spawning churn — bubbles
    * are recycled when they reach the surface).
    */
   bubbleRate: z.number().int().min(0).max(120).optional(),
+  /**
+   * Multiplier on how fast bubbles rise. 1 = the original tuning; higher
+   * values make bubbles stream upward faster.
+   */
+  bubbleSpeed: z.number().min(0.25).max(3).optional(),
   /** Hex color for the scene background (rendered as a flat clear color). */
   backgroundColor: z.string().optional(),
   /** Hex color for fish glyphs. */
@@ -48,8 +57,11 @@ export type AsciiAquariumConfig = z.infer<typeof AsciiAquariumConfigSchema>;
 export const DEFAULT_STYLE: AquariumStyle = "pixel";
 export const DEFAULT_FISH_COUNT = 6;
 export const DEFAULT_FISH_SPEED = 1;
+export const DEFAULT_FISH_SCALE = 1;
 export const DEFAULT_SEAWEED_COUNT = 4;
+export const DEFAULT_SEAWEED_SCALE = 1;
 export const DEFAULT_BUBBLE_RATE = 30;
+export const DEFAULT_BUBBLE_SPEED = 1;
 export const DEFAULT_BACKGROUND_COLOR = "#031827";
 export const DEFAULT_FISH_COLOR = "#67e8f9";
 export const DEFAULT_SEAWEED_COLOR = "#4ade80";

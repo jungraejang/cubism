@@ -28,6 +28,13 @@ export default function RendererHomePage() {
    * change.
    */
   const activeIdRef = useRef<string | null>(null);
+  /**
+   * Latest active module mirrored into a ref so the keydown handler (bound
+   * once on mount) can apply a module's `onPrimaryAction` locally — letting
+   * the center macropad key act instantly on the Pi even if the desktop
+   * control panel isn't open to round-trip the change.
+   */
+  const activeRef = useRef<ActiveModule | null>(null);
 
   const deviceId = process.env.NEXT_PUBLIC_DEVICE_ID ?? "pi-holo-001";
   const userId = process.env.NEXT_PUBLIC_USER_ID ?? "demo-user";
@@ -51,6 +58,7 @@ export default function RendererHomePage() {
 
   useEffect(() => {
     activeIdRef.current = active?.module.manifest.id ?? null;
+    activeRef.current = active;
   }, [active]);
 
   useEffect(() => {
@@ -176,6 +184,24 @@ export default function RendererHomePage() {
       const action = classify(event);
       if (!action) return;
       event.preventDefault();
+
+      // Apply the active module's primary action locally for instant
+      // feedback (e.g. cycling the aquarium's art style). This makes the
+      // center key work on the Pi standalone; we still emit below so the
+      // desktop control panel — the config source of truth — toggles in
+      // lockstep and stays in sync. Both compute the next config from the
+      // same current value, so applying in both places is idempotent.
+      if (action === "select") {
+        const current = activeRef.current;
+        const primary = current?.module.onPrimaryAction;
+        if (current && primary) {
+          const next = primary(current.config);
+          if (next !== null && next !== undefined) {
+            setActive({ module: current.module, config: next });
+          }
+        }
+      }
+
       socket.emit("controller:input", {
         deviceId,
         action,

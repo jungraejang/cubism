@@ -15,10 +15,13 @@ import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BUBBLE_COLOR,
   DEFAULT_BUBBLE_RATE,
+  DEFAULT_BUBBLE_SPEED,
   DEFAULT_FISH_COUNT,
+  DEFAULT_FISH_SCALE,
   DEFAULT_FISH_SPEED,
   DEFAULT_SEAWEED_COLOR,
   DEFAULT_SEAWEED_COUNT,
+  DEFAULT_SEAWEED_SCALE,
   DEFAULT_STYLE,
   type AquariumStyle,
   type AsciiAquariumConfig,
@@ -93,8 +96,11 @@ export function AsciiAquariumRenderer({
   const style = config.style ?? DEFAULT_STYLE;
   const fishCount = config.fishCount ?? DEFAULT_FISH_COUNT;
   const fishSpeed = config.fishSpeed ?? DEFAULT_FISH_SPEED;
+  const fishScale = config.fishScale ?? DEFAULT_FISH_SCALE;
   const seaweedCount = config.seaweedCount ?? DEFAULT_SEAWEED_COUNT;
+  const seaweedScale = config.seaweedScale ?? DEFAULT_SEAWEED_SCALE;
   const bubbleRate = config.bubbleRate ?? DEFAULT_BUBBLE_RATE;
+  const bubbleSpeed = config.bubbleSpeed ?? DEFAULT_BUBBLE_SPEED;
   const bubblePoolSize = Math.max(1, Math.ceil(bubbleRate * 0.18));
 
   const backgroundColor = config.backgroundColor ?? DEFAULT_BACKGROUND_COLOR;
@@ -142,8 +148,11 @@ export function AsciiAquariumRenderer({
             style={style}
             fishCount={fishCount}
             fishSpeed={fishSpeed}
+            fishScale={fishScale}
             seaweedCount={seaweedCount}
+            seaweedScale={seaweedScale}
             bubblePoolSize={bubblePoolSize}
+            bubbleSpeed={bubbleSpeed}
             seaweedColor={seaweedColor}
             bubbleColor={bubbleColor}
             backgroundColor={backgroundColor}
@@ -158,8 +167,11 @@ function AquariumScene({
   style,
   fishCount,
   fishSpeed,
+  fishScale,
   seaweedCount,
+  seaweedScale,
   bubblePoolSize,
+  bubbleSpeed,
   seaweedColor,
   bubbleColor,
   backgroundColor,
@@ -167,8 +179,11 @@ function AquariumScene({
   style: AquariumStyle;
   fishCount: number;
   fishSpeed: number;
+  fishScale: number;
   seaweedCount: number;
+  seaweedScale: number;
   bubblePoolSize: number;
+  bubbleSpeed: number;
   seaweedColor: string;
   bubbleColor: string;
   backgroundColor: string;
@@ -223,14 +238,15 @@ function AquariumScene({
           const sprite =
             PIXEL_SEAWEED[params.speciesIndex % PIXEL_SEAWEED.length] ??
             PIXEL_SEAWEED[0];
+          const seaweedPx = DOM_PIXEL_SEAWEED_PX * seaweedScale;
           // Pad for the skewX sway: the tip can swing out by ~tan(5°) of the
           // (height-scaled) sprite height, so reserve that much on each side.
           const skewPadPx = Math.ceil(
-            DOM_PIXEL_SEAWEED_PX * params.heightScale * 0.09,
+            seaweedPx * params.heightScale * 0.09,
           );
           const pos = spriteCenterX(
             worldToPercent(params.rootX, BOUND_MIN_X, BOUND_MAX_X),
-            DOM_PIXEL_SEAWEED_PX,
+            seaweedPx,
             skewPadPx,
           );
           return (
@@ -245,8 +261,8 @@ function AquariumScene({
                 left: pos.left,
                 marginLeft: pos.marginLeft,
                 bottom: "8%",
-                width: `${DOM_PIXEL_SEAWEED_PX}px`,
-                height: `${DOM_PIXEL_SEAWEED_PX}px`,
+                width: `${seaweedPx}px`,
+                height: `${seaweedPx}px`,
                 imageRendering: "pixelated",
                 userSelect: "none",
                 transformOrigin: "center bottom",
@@ -267,7 +283,7 @@ function AquariumScene({
               bottom: "10%",
               margin: 0,
               fontFamily: MONO_FONT,
-              fontSize: `${DOM_SEAWEED_FONT_PX}px`,
+              fontSize: `${DOM_SEAWEED_FONT_PX * seaweedScale}px`,
               lineHeight: 1,
               color: seaweedColor,
               whiteSpace: "pre",
@@ -291,15 +307,17 @@ function AquariumScene({
           index={i}
           positions={fishPositionsRef.current}
           fishSpeed={fishSpeed}
+          fishScale={fishScale}
         />
       ))}
 
       {bubbleParams.map((params, i) => {
         const left = `${worldToPercent(params.initial.x, BOUND_MIN_X, BOUND_MAX_X)}%`;
         const top = `${100 - worldToPercent(params.initial.y, BOUND_MIN_Y, BOUND_MAX_Y)}%`;
-        const rise = `cubism-dom-bubble-rise ${(7 / params.riseSpeed).toFixed(
-          2,
-        )}s linear ${(-params.driftPhase).toFixed(2)}s infinite`;
+        const rise = `cubism-dom-bubble-rise ${(
+          7 /
+          (params.riseSpeed * bubbleSpeed)
+        ).toFixed(2)}s linear ${(-params.driftPhase).toFixed(2)}s infinite`;
         const driftX = `${Math.sin(params.driftPhase) * 48}px`;
 
         if (style === "pixel") {
@@ -371,12 +389,14 @@ function AquariumFish({
   index,
   positions,
   fishSpeed,
+  fishScale,
 }: {
   style: AquariumStyle;
   params: FishParams;
   index: number;
   positions: FishPositions;
   fishSpeed: number;
+  fishScale: number;
 }) {
   const species = FISH_SPECIES[params.speciesIndex] ?? FISH_SPECIES[0];
   const sprite = PIXEL_FISH[index % PIXEL_FISH.length] ?? PIXEL_FISH[0];
@@ -463,13 +483,16 @@ function AquariumFish({
   const xPct = worldToPercent(state.x, BOUND_MIN_X, BOUND_MAX_X);
   const yPct = 100 - worldToPercent(state.y, BOUND_MIN_Y, BOUND_MAX_Y);
 
+  // Final on-screen sizes fold in the user's fishScale slider.
+  const fishPx = Math.round(DOM_PIXEL_FISH_PX * sprite.scale * fishScale);
+  const fishFontPx = Math.round(DOM_FISH_FONT_PX * species.scale * fishScale);
+
   // Position the fish by its CENTER and clamp in CSS so the whole sprite stays
   // inside the viewport. The depth `scale` transform expands around the center,
   // so the clamp bound uses the scaled half-size; `margin` (which centers the
   // box) uses the unscaled half since layout happens before the transform.
   let positionStyle: CSSProperties;
   if (style === "pixel") {
-    const fishPx = Math.round(DOM_PIXEL_FISH_PX * sprite.scale);
     const half = fishPx / 2;
     // Small pad for the bob (tiny rotate + translateY) overshoot.
     const bound = half * depthScale + 6;
@@ -518,8 +541,8 @@ function AquariumFish({
             decoding="async"
             style={{
               display: "block",
-              width: `${Math.round(DOM_PIXEL_FISH_PX * sprite.scale)}px`,
-              height: `${Math.round(DOM_PIXEL_FISH_PX * sprite.scale)}px`,
+              width: `${fishPx}px`,
+              height: `${fishPx}px`,
               imageRendering: "pixelated",
               userSelect: "none",
               // Gentle buoyant bob; per-fish phase keeps the school out of sync.
@@ -534,7 +557,7 @@ function AquariumFish({
           style={{
             margin: 0,
             fontFamily: MONO_FONT,
-            fontSize: `${Math.round(DOM_FISH_FONT_PX * species.scale)}px`,
+            fontSize: `${fishFontPx}px`,
             lineHeight: 1,
             color: params.color,
             whiteSpace: "pre",
@@ -554,7 +577,7 @@ function AquariumFish({
                 ).toFixed(2)}s infinite`,
                 ["--wave-amp" as string]: `${Math.max(
                   1,
-                  DOM_FISH_FONT_PX * species.scale * 0.08,
+                  fishFontPx * 0.08,
                 ).toFixed(1)}px`,
               }}
             >
