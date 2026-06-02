@@ -494,10 +494,12 @@ function AquariumFish({
   const fishPx = Math.round(DOM_PIXEL_FISH_PX * sprite.scale * fishScale);
   const fishFontPx = Math.round(DOM_FISH_FONT_PX * species.scale * fishScale);
 
-  // Position the fish by its CENTER and clamp in CSS so the whole sprite stays
-  // inside the viewport. The depth `scale` transform expands around the center,
-  // so the clamp bound uses the scaled half-size; `margin` (which centers the
-  // box) uses the unscaled half since layout happens before the transform.
+  // Position the fish by its CENTER and clamp in CSS so the whole fish stays
+  // inside the viewport regardless of size. The depth `scale` transform
+  // expands around the center, so the clamp bound uses the scaled half-size;
+  // `margin` (which centers the box) uses the unscaled half since layout
+  // happens before the transform. Both styles share this approach so ASCII
+  // fish no longer drift off-screen the way the old %-clamp let them.
   let positionStyle: CSSProperties;
   if (style === "pixel") {
     const half = fishPx / 2;
@@ -510,10 +512,18 @@ function AquariumFish({
       marginTop: `-${half}px`,
     };
   } else {
+    // Estimate the ASCII fish's rendered box. Monospace glyph advance is
+    // ~0.6em; height is one line plus the swim-wave overshoot. A few px of
+    // pad covers the text-shadow glow so it never clips at the edge.
+    const halfW = (frameChars.length * fishFontPx * 0.62) / 2;
+    const halfH = (fishFontPx * 1.25) / 2;
+    const boundX = halfW * depthScale + 6;
+    const boundY = halfH * depthScale + 6;
     positionStyle = {
-      left: `${clamp(xPct, 9, 78)}%`,
-      top: `${clamp(yPct, 10, 82)}%`,
-      margin: 0,
+      left: `clamp(${boundX}px, ${xPct}%, calc(100% - ${boundX}px))`,
+      top: `clamp(${boundY}px, ${yPct}%, calc(100% - ${boundY}px))`,
+      marginLeft: `-${halfW}px`,
+      marginTop: `-${halfH}px`,
     };
   }
 
