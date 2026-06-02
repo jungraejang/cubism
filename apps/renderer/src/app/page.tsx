@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
 import { modules, type AnyCubismModule } from "@cubism/modules";
+import type { DebugClientLogPayload } from "@cubism/protocol";
 
 type ActiveModule = {
   module: AnyCubismModule;
@@ -24,6 +25,16 @@ function logRendererDebug(
   message: string,
   data: Record<string, unknown>,
 ) {
+  const payload: DebugClientLogPayload = {
+    sessionId: "70f298",
+    runId: "freeze-investigation",
+    hypothesisId,
+    location: "apps/renderer/src/app/page.tsx",
+    message,
+    data,
+    timestamp: Date.now(),
+  };
+  window.dispatchEvent(new CustomEvent("cubism:debug-log", { detail: payload }));
   fetch("http://127.0.0.1:7781/ingest/15315dab-8f28-4100-9731-d02658e0d3cd", {
     method: "POST",
     keepalive: true,
@@ -31,15 +42,7 @@ function logRendererDebug(
       "Content-Type": "application/json",
       "X-Debug-Session-Id": "70f298",
     },
-    body: JSON.stringify({
-      sessionId: "70f298",
-      runId: "freeze-investigation",
-      hypothesisId,
-      location: "apps/renderer/src/app/page.tsx",
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
+    body: JSON.stringify(payload),
   }).catch(() => {});
 }
 
@@ -103,6 +106,17 @@ export default function RendererHomePage() {
   }, []);
 
   useEffect(() => {
+    function onDebugLog(event: Event) {
+      const payload = (event as CustomEvent<DebugClientLogPayload>).detail;
+      if (!payload || payload.sessionId !== "70f298") return;
+      socket.emit("debug:client-log", payload);
+    }
+
+    window.addEventListener("cubism:debug-log", onDebugLog);
+    return () => window.removeEventListener("cubism:debug-log", onDebugLog);
+  }, [socket]);
+
+  useEffect(() => {
     activeIdRef.current = active?.module.manifest.id ?? null;
     if (active?.module.manifest.id === "ascii-aquarium") {
       (window as CubismRendererWindow).__cubismAquariumLastFrame = Date.now();
@@ -115,7 +129,7 @@ export default function RendererHomePage() {
       socketId: socket.id ?? null,
     });
     // #endregion
-  }, [active]);
+  }, [active, socket]);
 
   /**
    * Pi kiosk watchdog. If the aquarium's R3F/Drei frame loop stalls, keyboard

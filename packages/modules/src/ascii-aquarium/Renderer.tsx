@@ -163,21 +163,23 @@ function logAquariumDebug(
   message: string,
   data: Record<string, unknown>,
 ) {
+  const payload = {
+    sessionId: "70f298",
+    runId: "freeze-investigation",
+    hypothesisId,
+    location: "packages/modules/src/ascii-aquarium/Renderer.tsx",
+    message,
+    data,
+    timestamp: Date.now(),
+  };
+  window.dispatchEvent(new CustomEvent("cubism:debug-log", { detail: payload }));
   fetch("http://127.0.0.1:7781/ingest/15315dab-8f28-4100-9731-d02658e0d3cd", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Debug-Session-Id": "70f298",
     },
-    body: JSON.stringify({
-      sessionId: "70f298",
-      runId: "freeze-investigation",
-      hypothesisId,
-      location: "packages/modules/src/ascii-aquarium/Renderer.tsx",
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
+    body: JSON.stringify(payload),
   }).catch(() => {});
 }
 
