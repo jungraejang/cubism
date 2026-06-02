@@ -2,6 +2,7 @@ import type { ModuleManifest } from "../types";
 import {
   DEFAULT_CIRCLE_COLOR,
   DEFAULT_DATE_COLOR,
+  DEFAULT_PERFORMANCE_MODE,
   DEFAULT_TEXT_COLOR,
   type ClockModuleConfig,
 } from "./config";
@@ -16,6 +17,7 @@ export const clockManifest: ModuleManifest<ClockModuleConfig> = {
   defaultConfig: {
     format: "12h",
     showSeconds: true,
+    performanceMode: DEFAULT_PERFORMANCE_MODE,
     rotation: 180,
     flipHorizontal: true,
     flipVertical: false,

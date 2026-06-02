@@ -21,11 +21,18 @@ export const ClockConfigSchema = z.object({
   textColor: z.string().optional(),
   /** Hex color (e.g. "#a5f3fc") for the date label below the time. */
   dateColor: z.string().optional(),
+  /**
+   * Pi-friendly mode: skips per-digit Framer animations, uses CSS-only
+   * motion for rings/halo, drops the inner ring, and uses cheaper text glow.
+   */
+  performanceMode: z.boolean().optional(),
 });
 
 export type ClockModuleConfig = z.infer<typeof ClockConfigSchema>;
 
 export type ClockRotation = NonNullable<ClockModuleConfig["rotation"]>;
+
+export const DEFAULT_PERFORMANCE_MODE = true;
 
 export const DEFAULT_CIRCLE_COLOR = "#22d3ee";
 export const DEFAULT_TEXT_COLOR = "#67e8f9";

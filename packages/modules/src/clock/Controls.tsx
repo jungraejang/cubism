@@ -5,6 +5,7 @@ import type { ControlsProps } from "../types";
 import {
   DEFAULT_CIRCLE_COLOR,
   DEFAULT_DATE_COLOR,
+  DEFAULT_PERFORMANCE_MODE,
   DEFAULT_TEXT_COLOR,
   type ClockModuleConfig,
   type ClockRotation,
@@ -58,6 +59,22 @@ export function ClockControls({
           onChange={(event) => patch({ showSeconds: event.target.checked })}
         />
         <span>Show seconds</span>
+      </label>
+
+      <label className="flex items-center gap-2 text-sm text-zinc-300">
+        <input
+          type="checkbox"
+          checked={config.performanceMode ?? DEFAULT_PERFORMANCE_MODE}
+          onChange={(event) =>
+            patch({ performanceMode: event.target.checked })
+          }
+        />
+        <span>
+          Performance mode{" "}
+          <span className="text-xs text-zinc-500">
+            (recommended for Pi — simpler animations, fewer updates)
+          </span>
+        </span>
       </label>
 
       <div className="flex flex-col gap-2">
