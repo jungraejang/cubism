@@ -52,15 +52,6 @@ export function ClockControls({
         </select>
       </label>
 
-      <label className="flex items-center gap-3">
-        <input
-          type="checkbox"
-          checked={config.showSeconds}
-          onChange={(event) => patch({ showSeconds: event.target.checked })}
-        />
-        <span>Show seconds</span>
-      </label>
-
       <label className="flex items-center gap-2 text-sm text-zinc-300">
         <input
           type="checkbox"

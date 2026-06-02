@@ -24,22 +24,10 @@ const PIXEL_SHIFT_MAX = 3;
 const PIXEL_SHIFT_INTERVAL_MS = 60_000;
 const PIXEL_SHIFT_DURATION_S = 2;
 
-const TIME_FORMAT_OPTS_12H_SEC: Intl.DateTimeFormatOptions = {
-  hour: "numeric",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: true,
-};
 const TIME_FORMAT_OPTS_12H: Intl.DateTimeFormatOptions = {
   hour: "numeric",
   minute: "2-digit",
   hour12: true,
-};
-const TIME_FORMAT_OPTS_24H_SEC: Intl.DateTimeFormatOptions = {
-  hour: "numeric",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
 };
 const TIME_FORMAT_OPTS_24H: Intl.DateTimeFormatOptions = {
   hour: "numeric",
@@ -85,32 +73,79 @@ const AnimatedChar = memo(function AnimatedChar({
   );
 });
 
+/** Renders hour:minute and, for 12h, AM/PM with extra space between them. */
+const ClockTimeDisplay = memo(function ClockTimeDisplay({
+  parts,
+  animateDigits,
+  textGlow,
+  performanceMode,
+}: {
+  parts: Intl.DateTimeFormatPart[];
+  animateDigits: boolean;
+  textGlow: string;
+  performanceMode: boolean;
+}) {
+  const glowStyle = performanceMode
+    ? { textShadow: textGlow }
+    : { filter: textGlow };
+
+  const hour = parts.find((p) => p.type === "hour");
+  const minute = parts.find((p) => p.type === "minute");
+  const period = parts.find((p) => p.type === "dayPeriod");
+
+  return (
+    <div
+      className="flex items-baseline justify-center gap-[0.5em] text-[12vmin] font-bold tracking-tight tabular-nums"
+      style={glowStyle}
+    >
+      <span className="inline-flex items-center justify-center">
+        {hour ? (
+          <AnimatedChar
+            char={hour.value}
+            isDigit
+            animateDigits={animateDigits}
+          />
+        ) : null}
+        <span>:</span>
+        {minute ? (
+          <AnimatedChar
+            char={minute.value}
+            isDigit
+            animateDigits={animateDigits}
+          />
+        ) : null}
+      </span>
+      {period ? (
+        <span className="text-[0.45em] font-semibold uppercase tracking-[0.12em]">
+          {period.value}
+        </span>
+      ) : null}
+    </div>
+  );
+});
+
 export function ClockRenderer({ config }: Props) {
   const [now, setNow] = useState(() => new Date());
   const [pixelShift, setPixelShift] = useState({ x: 0, y: 0 });
 
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
-  const showSeconds = config.showSeconds ?? true;
 
-  // When seconds are hidden, tick once per minute — 60× fewer React updates.
+  // Time shows hours and minutes only; tick once per minute.
   useEffect(() => {
     const tick = () => setNow(new Date());
-    const periodMs = showSeconds ? 1000 : 60_000;
-    const alignMs = showSeconds
-      ? 1000 - (Date.now() % 1000)
-      : 60_000 - (Date.now() % 60_000);
+    const alignMs = 60_000 - (Date.now() % 60_000);
 
     let intervalId: number | null = null;
     const timeoutId = window.setTimeout(() => {
       tick();
-      intervalId = window.setInterval(tick, periodMs);
+      intervalId = window.setInterval(tick, 60_000);
     }, alignMs);
 
     return () => {
       window.clearTimeout(timeoutId);
       if (intervalId !== null) window.clearInterval(intervalId);
     };
-  }, [showSeconds]);
+  }, []);
 
   useEffect(() => {
     const pick = () => {
@@ -123,20 +158,14 @@ export function ClockRenderer({ config }: Props) {
     return () => window.clearInterval(id);
   }, []);
 
-  const timeFormatter = useMemo(() => {
-    const opts =
-      config.format === "12h"
-        ? showSeconds
-          ? TIME_FORMAT_OPTS_12H_SEC
-          : TIME_FORMAT_OPTS_12H
-        : showSeconds
-          ? TIME_FORMAT_OPTS_24H_SEC
-          : TIME_FORMAT_OPTS_24H;
-    return new Intl.DateTimeFormat("en-US", {
-      ...opts,
-      timeZone: config.timezone,
-    });
-  }, [config.format, config.timezone, showSeconds]);
+  const timeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-US", {
+        ...(config.format === "12h" ? TIME_FORMAT_OPTS_12H : TIME_FORMAT_OPTS_24H),
+        timeZone: config.timezone,
+      }),
+    [config.format, config.timezone],
+  );
 
   const dateFormatter = useMemo(
     () =>
@@ -147,8 +176,8 @@ export function ClockRenderer({ config }: Props) {
     [config.timezone],
   );
 
-  const time = useMemo(
-    () => timeFormatter.format(now),
+  const timeParts = useMemo(
+    () => timeFormatter.formatToParts(now),
     [now, timeFormatter],
   );
   const date = useMemo(
@@ -237,23 +266,12 @@ export function ClockRenderer({ config }: Props) {
             />
 
             <div className="text-center">
-              <div
-                className="flex items-center justify-center text-[12vmin] font-bold tracking-tight tabular-nums"
-                style={
-                  performanceMode
-                    ? { textShadow: theme.textGlow }
-                    : { filter: theme.textGlow }
-                }
-              >
-                {time.split("").map((char, i) => (
-                  <AnimatedChar
-                    key={i}
-                    char={char}
-                    isDigit={/\d/.test(char)}
-                    animateDigits={animateDigits}
-                  />
-                ))}
-              </div>
+              <ClockTimeDisplay
+                parts={timeParts}
+                animateDigits={animateDigits}
+                textGlow={theme.textGlow}
+                performanceMode={performanceMode}
+              />
               <div
                 className="mt-6 text-[3.2vmin] uppercase tracking-[0.35em]"
                 style={{ color: dateColor }}
@@ -277,29 +295,33 @@ export function ClockRenderer({ config }: Props) {
 }
 
 /** Distance of the dial numbers from the center, in vmin. */
-const DIAL_RADIUS_VMIN = 34;
-/** All 60 second positions, laid out once. */
-const DIAL_NUMBERS = Array.from({ length: 60 }, (_, i) => i);
+const DIAL_RADIUS_VMIN = 35;
+/** Second positions labeled on the dial (multiples of 5 only). */
+const DIAL_NUMBERS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55] as const;
+/** Dots at the four positions between each labeled second. */
+const DIAL_TICKS = Array.from({ length: 60 }, (_, i) => i).filter(
+  (n) => n % 5 !== 0,
+);
+const DIAL_LABEL_FONT_VMIN = 4.2;
+const DIAL_TICK_SIZE_VMIN = 0.55;
+
+function dialTransform(second: number): string {
+  return `translate(-50%, -50%) rotate(${second * 6}deg) translateY(-${DIAL_RADIUS_VMIN}vmin)`;
+}
 
 /**
- * A 0–59 seconds dial that rotates so the current second sits at the 12
- * o'clock marker. Implemented as a single pure-CSS 60s linear spin with a
- * negative `animation-delay` equal to the current second (with fraction), so
- * it stays synced to the system clock with ZERO per-frame JS — the Pi only
- * composites one rotating layer. Numbers are laid out radially; the one under
- * the top marker reads upright, the rest fan around like a gauge.
+ * Seconds dial: labels at 0, 5, 10, … 55 with dots at every other second,
+ * rotating so the current second sits at 12 o'clock. Pure-CSS 60s spin synced
+ * via negative animation-delay on mount.
  */
 const SecondsDial = memo(function SecondsDial({ color }: { color: string }) {
-  // Computed once on mount: where the spin should start so "now" is on top.
-  // The CSS animation runs off the compositor clock thereafter, so we don't
-  // recompute (and restart) it on every React tick.
   const startDelaySec = useMemo(() => {
     const now = new Date();
     return now.getSeconds() + now.getMilliseconds() / 1000;
   }, []);
 
-  const majorColor = useMemo(() => withAlpha(color, 0.9), [color]);
-  const minorColor = useMemo(() => withAlpha(color, 0.4), [color]);
+  const labelColor = useMemo(() => withAlpha(color, 0.92), [color]);
+  const tickColor = useMemo(() => withAlpha(color, 0.5), [color]);
 
   return (
     <div
@@ -310,23 +332,32 @@ const SecondsDial = memo(function SecondsDial({ color }: { color: string }) {
         willChange: "transform",
       }}
     >
-      {DIAL_NUMBERS.map((n) => {
-        const isMajor = n % 5 === 0;
-        return (
-          <span
-            key={n}
-            className="absolute left-1/2 top-1/2 tabular-nums leading-none"
-            style={{
-              transform: `translate(-50%, -50%) rotate(${n * 6}deg) translateY(-${DIAL_RADIUS_VMIN}vmin)`,
-              color: isMajor ? majorColor : minorColor,
-              fontSize: isMajor ? "2.6vmin" : "1.7vmin",
-              fontWeight: isMajor ? 700 : 400,
-            }}
-          >
-            {n}
-          </span>
-        );
-      })}
+      {DIAL_TICKS.map((n) => (
+        <span
+          key={`tick-${n}`}
+          className="absolute left-1/2 top-1/2 rounded-full"
+          style={{
+            transform: dialTransform(n),
+            width: `${DIAL_TICK_SIZE_VMIN}vmin`,
+            height: `${DIAL_TICK_SIZE_VMIN}vmin`,
+            backgroundColor: tickColor,
+          }}
+        />
+      ))}
+
+      {DIAL_NUMBERS.map((n) => (
+        <span
+          key={`label-${n}`}
+          className="absolute left-1/2 top-1/2 tabular-nums font-bold leading-none"
+          style={{
+            transform: dialTransform(n),
+            color: labelColor,
+            fontSize: `${DIAL_LABEL_FONT_VMIN}vmin`,
+          }}
+        >
+          {n}
+        </span>
+      ))}
     </div>
   );
 });

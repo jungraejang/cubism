@@ -16,7 +16,7 @@ export const clockManifest: ModuleManifest<ClockModuleConfig> = {
   permissions: [],
   defaultConfig: {
     format: "12h",
-    showSeconds: true,
+    showSeconds: false,
     performanceMode: DEFAULT_PERFORMANCE_MODE,
     rotation: 180,
     flipHorizontal: true,

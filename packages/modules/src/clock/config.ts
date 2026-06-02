@@ -8,7 +8,8 @@ import { z } from "zod";
  */
 export const ClockConfigSchema = z.object({
   format: z.enum(["12h", "24h"]),
-  showSeconds: z.boolean(),
+  /** @deprecated Seconds are shown on the dial only; time never includes :ss. */
+  showSeconds: z.boolean().optional(),
   timezone: z.string().optional(),
   rotation: z
     .union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
