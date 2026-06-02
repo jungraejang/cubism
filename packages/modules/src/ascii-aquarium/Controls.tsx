@@ -9,7 +9,6 @@ import {
   DEFAULT_BUBBLE_RATE,
   DEFAULT_FISH_COUNT,
   DEFAULT_FISH_SPEED,
-  DEFAULT_PERFORMANCE_MODE,
   DEFAULT_SEAWEED_COLOR,
   DEFAULT_SEAWEED_COUNT,
   NORMAL_CAPS,
@@ -32,7 +31,6 @@ export function AsciiAquariumControls({
   const backgroundColor = config.backgroundColor ?? DEFAULT_BACKGROUND_COLOR;
   const seaweedColor = config.seaweedColor ?? DEFAULT_SEAWEED_COLOR;
   const bubbleColor = config.bubbleColor ?? DEFAULT_BUBBLE_COLOR;
-  const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
 
   return (
     <div className="flex flex-col gap-5">
@@ -114,8 +112,8 @@ export function AsciiAquariumControls({
         </label>
 
         <p className="text-xs text-zinc-500">
-          Higher counts look richer but cost more on the Pi. If frame rate
-          dips, drop these or enable Performance mode below.
+          Higher counts look richer but use more CPU on the Pi — dial them back
+          if the display feels sluggish.
         </p>
       </div>
 
@@ -143,23 +141,6 @@ export function AsciiAquariumControls({
           school doesn&apos;t look like clones.
         </p>
       </div>
-
-      <label className="flex items-center gap-2 text-sm text-zinc-300">
-        <input
-          type="checkbox"
-          checked={performanceMode}
-          onChange={(event) =>
-            patch({ performanceMode: event.target.checked })
-          }
-        />
-        <span>
-          Performance mode{" "}
-          <span className="text-xs text-zinc-500">
-            (recommended for Raspberry Pi — caps DPR, lowers frame rate, and
-            simplifies fish/seaweed animation)
-          </span>
-        </span>
-      </label>
 
       <div className="flex flex-col gap-2">
         <span className="text-zinc-400">Orientation</span>

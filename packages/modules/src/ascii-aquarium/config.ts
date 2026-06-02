@@ -3,9 +3,7 @@ import { OrientationFields } from "../_lib/orientation";
 
 /**
  * ASCII aquarium configuration. Counts are validated server-side via Zod so
- * a malformed payload can't push the Pi into rendering 10,000 fish — but the
- * actual rendering ceiling lives in `performanceMode` clamps inside the
- * Renderer, not in the schema.
+ * a malformed payload can't push the Pi into rendering excessive entities.
  */
 export const AsciiAquariumConfigSchema = z.object({
   /** How many fish the aquarium attempts to render. Hard-capped by perf mode. */
@@ -31,12 +29,6 @@ export const AsciiAquariumConfigSchema = z.object({
   seaweedColor: z.string().optional(),
   /** Hex color for bubble glyphs. */
   bubbleColor: z.string().optional(),
-  /**
-   * Pi 4-friendly mode: caps DPR, lowers the aquarium frame rate, and
-   * simplifies the most expensive ASCII DOM animations. Defaults to `true`
-   * since the Pi is the primary target.
-   */
-  performanceMode: z.boolean().optional(),
   ...OrientationFields,
 });
 
@@ -50,20 +42,8 @@ export const DEFAULT_BACKGROUND_COLOR = "#031827";
 export const DEFAULT_FISH_COLOR = "#67e8f9";
 export const DEFAULT_SEAWEED_COLOR = "#4ade80";
 export const DEFAULT_BUBBLE_COLOR = "#bae6fd";
-export const DEFAULT_PERFORMANCE_MODE = true;
 
-/**
- * Hard ceilings applied at render time. Anything the user dials above these
- * (via the Controls panel or a malformed config) is silently clamped — the
- * schema's `.max()` is a much looser sanity bound; this is the "what your Pi
- * can actually handle" line.
- */
-export const PERF_CAPS = {
-  fishCount: 6,
-  seaweedCount: 4,
-  bubblePoolSize: 10,
-} as const;
-
+/** Slider maxima in the control panel. */
 export const NORMAL_CAPS = {
   fishCount: 14,
   seaweedCount: 8,

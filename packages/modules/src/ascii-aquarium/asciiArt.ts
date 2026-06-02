@@ -4,7 +4,7 @@
  * Fish are stored as "species" with TWO frames each (`a` / `b`) that the
  * renderer alternates between for a body wiggle. Strings contain `\n`
  * newlines and render as multi-line ASCII art via a monospace `<pre>`
- * inside drei's `<Html>` — that's what gives the screenshot's
+ * in a monospace `<pre>` — that's what gives the screenshot's
  * "detailed fish" look vs. the previous single-line `><(((°>` style.
  *
  * Every shape is authored RIGHT-FACING. When a fish swims left, we
