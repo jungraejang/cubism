@@ -112,6 +112,14 @@ const MONO_FONT =
   'ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace';
 
 /**
+ * DOM performance renderer sizing. The DOM fallback bypasses drei's
+ * distanceFactor scaling, so it needs its own larger screen-space font sizes.
+ */
+const DOM_FISH_FONT_PX = 19;
+const DOM_SEAWEED_FONT_PX = 22;
+const DOM_BUBBLE_FONT_BASE_PX = 18;
+
+/**
  * Body-undulation ("snake swim") parameters. Each fish character is
  * offset vertically by a sine wave that travels along the body from
  * head to tail, so the fish appears to ripple as it swims rather than
@@ -156,50 +164,6 @@ type FishPositions = ({ x: number; y: number } | null)[];
 const SEAWEED_WAVE_AMPLITUDE_PX = 3;
 const SEAWEED_WAVE_ANGULAR_SPEED = 1.6;
 const SEAWEED_WAVE_PHASE_PER_ROW = 0.6;
-
-// #region agent log
-function logAquariumDebug(
-  hypothesisId: string,
-  message: string,
-  data: Record<string, unknown>,
-) {
-  const payload = {
-    sessionId: "70f298",
-    runId: "freeze-investigation",
-    hypothesisId,
-    location: "packages/modules/src/ascii-aquarium/Renderer.tsx",
-    message,
-    data,
-    timestamp: Date.now(),
-  };
-  window.dispatchEvent(new CustomEvent("cubism:debug-log", { detail: payload }));
-  fetch("http://127.0.0.1:7781/ingest/15315dab-8f28-4100-9731-d02658e0d3cd", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "70f298",
-    },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-}
-
-function getAquariumDebugMemory() {
-  const maybePerformance = performance as Performance & {
-    memory?: {
-      usedJSHeapSize?: number;
-      totalJSHeapSize?: number;
-      jsHeapSizeLimit?: number;
-    };
-  };
-  return maybePerformance.memory
-    ? {
-        usedJSHeapSize: maybePerformance.memory.usedJSHeapSize,
-        totalJSHeapSize: maybePerformance.memory.totalJSHeapSize,
-        jsHeapSizeLimit: maybePerformance.memory.jsHeapSizeLimit,
-      }
-    : null;
-}
-// #endregion
 
 /**
  * Top-level Renderer. Wrapper pattern matches every other module:
@@ -255,31 +219,6 @@ export function AsciiAquariumRenderer({
   // DPR cap is the single biggest Pi win. On a high-DPR display, WebGL
   // would otherwise allocate a 2x or 3x backing store.
   const dpr = performanceMode ? 1 : Math.min(2, window.devicePixelRatio || 1);
-
-  useEffect(() => {
-    // #region agent log
-    logAquariumDebug("H5", "aquarium renderer config applied", {
-      fishCount,
-      seaweedCount,
-      bubbleRate,
-      bubblePoolSize,
-      performanceMode,
-      fishSpeed,
-      dpr,
-      htmlOverlayCount: document.querySelectorAll("[data-cubism-aquarium-html]")
-        .length,
-      memory: getAquariumDebugMemory(),
-    });
-    // #endregion
-  }, [
-    bubblePoolSize,
-    bubbleRate,
-    dpr,
-    fishCount,
-    fishSpeed,
-    performanceMode,
-    seaweedCount,
-  ]);
 
   return (
     <div
@@ -352,13 +291,13 @@ export function AsciiAquariumRenderer({
               }}
             >
               <Scene
-              fishCount={fishCount}
-              fishSpeed={fishSpeed}
-              seaweedCount={seaweedCount}
-              bubblePoolSize={bubblePoolSize}
-              seaweedColor={seaweedColor}
-              bubbleColor={bubbleColor}
-              performanceMode={performanceMode}
+                fishCount={fishCount}
+                fishSpeed={fishSpeed}
+                seaweedCount={seaweedCount}
+                bubblePoolSize={bubblePoolSize}
+                seaweedColor={seaweedColor}
+                bubbleColor={bubbleColor}
+                performanceMode={performanceMode}
               />
             </Canvas>
           )}
@@ -394,40 +333,10 @@ function DomPerformanceScene({
     () => buildBubbleParams(bubblePoolSize),
     [bubblePoolSize],
   );
-  const heartbeatCountRef = useRef(0);
-
-  useEffect(() => {
-    markAquariumFrame();
-    const id = window.setInterval(() => {
-      heartbeatCountRef.current += 1;
-      markAquariumFrame();
-    }, 1_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const lastFrame = (
-        window as Window & {
-          __cubismAquariumLastFrame?: number;
-        }
-      ).__cubismAquariumLastFrame;
-      // #region agent log
-      logAquariumDebug("H2,H3", "dom performance scene health", {
-        heartbeatCount: heartbeatCountRef.current,
-        lastFrameAgeMs:
-          typeof lastFrame === "number" ? Date.now() - lastFrame : null,
-        visibilityState: document.visibilityState,
-        domFishCount: fishParams.length,
-        domSeaweedCount: seaweedParams.length,
-        domBubbleCount: bubbleParams.length,
-        canvasCount: document.querySelectorAll("canvas").length,
-        memory: getAquariumDebugMemory(),
-      });
-      // #endregion
-    }, 60_000);
-    return () => window.clearInterval(id);
-  }, [bubbleParams.length, fishParams.length, seaweedParams.length]);
+  const fishPositionsRef = useRef<FishPositions>([]);
+  if (fishPositionsRef.current.length !== fishParams.length) {
+    fishPositionsRef.current = new Array(fishParams.length).fill(null);
+  }
 
   return (
     <div
@@ -435,14 +344,13 @@ function DomPerformanceScene({
       style={{ background: backgroundColor }}
     >
       <style>{`
-        @keyframes cubism-dom-fish-drift {
-          0% { transform: translate3d(0, 0, 0) scale(var(--depth-scale)) scaleX(var(--facing)); }
-          50% { transform: translate3d(var(--swim-x), var(--swim-y), 0) scale(var(--depth-scale)) scaleX(var(--facing)); }
-          100% { transform: translate3d(0, 0, 0) scale(var(--depth-scale)) scaleX(var(--facing)); }
-        }
         @keyframes cubism-dom-seaweed-sway {
           0%, 100% { transform: skewX(-5deg) scaleY(var(--height-scale)); }
           50% { transform: skewX(5deg) scaleY(var(--height-scale)); }
+        }
+        @keyframes cubism-dom-fish-wave {
+          0%, 100% { transform: translateY(calc(var(--wave-amp) * -1)); }
+          50% { transform: translateY(var(--wave-amp)); }
         }
         @keyframes cubism-dom-bubble-rise {
           0% { transform: translate3d(0, 20px, 0); opacity: 0; }
@@ -463,7 +371,7 @@ function DomPerformanceScene({
               bottom: "10%",
               margin: 0,
               fontFamily: MONO_FONT,
-              fontSize: "13px",
+              fontSize: `${DOM_SEAWEED_FONT_PX}px`,
               lineHeight: 1,
               color: seaweedColor,
               whiteSpace: "pre",
@@ -482,41 +390,14 @@ function DomPerformanceScene({
       })}
 
       {fishParams.map((params, i) => {
-        const species = FISH_SPECIES[params.speciesIndex] ?? FISH_SPECIES[0];
-        const duration = Math.max(5, 10 / Math.max(0.25, fishSpeed));
-        const facing = params.target.x < params.initial.x ? -1 : 1;
         return (
-          <pre
+          <DomPerformanceFish
             key={`dom-fish-${i}`}
-            style={{
-              position: "absolute",
-              left: `${worldToPercent(params.initial.x, BOUND_MIN_X, BOUND_MAX_X)}%`,
-              top: `${100 - worldToPercent(params.initial.y, BOUND_MIN_Y, BOUND_MAX_Y)}%`,
-              margin: 0,
-              fontFamily: MONO_FONT,
-              fontSize: `${Math.round(11 * species.scale)}px`,
-              lineHeight: 1,
-              color: params.color,
-              whiteSpace: "pre",
-              textShadow: `0 0 6px ${params.color}66`,
-              userSelect: "none",
-              animation: `cubism-dom-fish-drift ${duration.toFixed(
-                2,
-              )}s ease-in-out ${(-params.phaseMs / 1000).toFixed(2)}s infinite`,
-              ["--swim-x" as string]: `${((params.target.x - params.initial.x) * 24).toFixed(
-                1,
-              )}px`,
-              ["--swim-y" as string]: `${((params.target.y - params.initial.y) * -24).toFixed(
-                1,
-              )}px`,
-              ["--depth-scale" as string]: depthScaleForZ(params.initial.z).toFixed(
-                3,
-              ),
-              ["--facing" as string]: String(facing),
-            }}
-          >
-            {species.a}
-          </pre>
+            params={params}
+            index={i}
+            positions={fishPositionsRef.current}
+            fishSpeed={fishSpeed}
+          />
         );
       })}
 
@@ -531,7 +412,7 @@ function DomPerformanceScene({
               top: `${100 - worldToPercent(params.initial.y, BOUND_MIN_Y, BOUND_MAX_Y)}%`,
               margin: 0,
               fontFamily: MONO_FONT,
-              fontSize: `${10 + params.glyphIndex * 3}px`,
+              fontSize: `${DOM_BUBBLE_FONT_BASE_PX + params.glyphIndex * 6}px`,
               lineHeight: 1,
               color: bubbleColor,
               whiteSpace: "pre",
@@ -547,6 +428,149 @@ function DomPerformanceScene({
           </pre>
         );
       })}
+    </div>
+  );
+}
+
+function DomPerformanceFish({
+  params,
+  index,
+  positions,
+  fishSpeed,
+}: {
+  params: FishParams;
+  index: number;
+  positions: FishPositions;
+  fishSpeed: number;
+}) {
+  const species = FISH_SPECIES[params.speciesIndex] ?? FISH_SPECIES[0];
+  const frameChars = useMemo(() => species.a.split(""), [species.a]);
+  const [state, setState] = useState(() => ({
+    x: params.initial.x,
+    y: params.initial.y,
+    z: params.initial.z,
+    facing: params.target.x < params.initial.x ? -1 : 1,
+    durationMs: 2800,
+  }));
+
+  useEffect(() => {
+    return () => {
+      positions[index] = null;
+    };
+  }, [index, positions]);
+
+  useEffect(() => {
+    positions[index] = { x: state.x, y: state.y };
+  }, [index, positions, state.x, state.y]);
+
+  useEffect(() => {
+    let timeoutId: number | null = null;
+    let cancelled = false;
+
+    const baseIntervalMs = Math.max(1600, 3400 / Math.max(0.25, fishSpeed));
+    const scheduleNext = (delayMs: number) => {
+      timeoutId = window.setTimeout(() => {
+        if (cancelled) return;
+        moveOnce();
+        scheduleNext(baseIntervalMs * (0.65 + Math.random() * 0.85));
+      }, delayMs);
+    };
+
+    const moveOnce = () => {
+      setState((prev) => {
+        const maxStepX = 1.25;
+        const maxStepY = 0.65;
+        let nextX = clamp(
+          prev.x + (Math.random() - 0.5) * maxStepX * 2,
+          BOUND_MIN_X + 0.25,
+          BOUND_MAX_X - 0.25,
+        );
+        let nextY = clamp(
+          prev.y + (Math.random() - 0.5) * maxStepY * 2,
+          BOUND_MIN_Y + 0.65,
+          BOUND_MAX_Y - 0.45,
+        );
+        const separation = getDomFishSeparation(index, positions, nextX, nextY);
+        nextX = clamp(
+          nextX + separation.x,
+          BOUND_MIN_X + 0.25,
+          BOUND_MAX_X - 0.25,
+        );
+        nextY = clamp(
+          nextY + separation.y,
+          BOUND_MIN_Y + 0.65,
+          BOUND_MAX_Y - 0.45,
+        );
+        const facing = nextX < prev.x ? -1 : 1;
+        positions[index] = { x: nextX, y: nextY };
+        return {
+          x: nextX,
+          y: nextY,
+          z: lerp(FISH_Z_MIN, FISH_Z_MAX, Math.random()),
+          facing,
+          durationMs: baseIntervalMs * (0.7 + Math.random() * 0.75),
+        };
+      });
+    };
+
+    const initialDelayMs =
+      (params.phaseMs % baseIntervalMs) + index * 137 + Math.random() * 900;
+    scheduleNext(initialDelayMs);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+    };
+  }, [fishSpeed, index, params.phaseMs, positions]);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${worldToPercent(state.x, BOUND_MIN_X, BOUND_MAX_X)}%`,
+        top: `${100 - worldToPercent(state.y, BOUND_MIN_Y, BOUND_MAX_Y)}%`,
+        margin: 0,
+        transform: `scale(${depthScaleForZ(state.z).toFixed(3)})`,
+        transformOrigin: "center center",
+        transition: `left ${state.durationMs.toFixed(
+          0,
+        )}ms ease-in-out, top ${state.durationMs.toFixed(
+          0,
+        )}ms ease-in-out, transform ${state.durationMs.toFixed(0)}ms ease-in-out`,
+      }}
+    >
+      <pre
+        style={{
+          margin: 0,
+          fontFamily: MONO_FONT,
+          fontSize: `${Math.round(DOM_FISH_FONT_PX * species.scale)}px`,
+          lineHeight: 1,
+          color: params.color,
+          whiteSpace: "pre",
+          textShadow: `0 0 6px ${params.color}66`,
+          userSelect: "none",
+          transform: `scaleX(${state.facing})`,
+          transformOrigin: "center center",
+        }}
+      >
+        {frameChars.map((ch, i) => (
+          <span
+            key={`${i}-${ch}`}
+            style={{
+              display: "inline-block",
+              animation: `cubism-dom-fish-wave 520ms ease-in-out ${(
+                -i * 0.07
+              ).toFixed(2)}s infinite`,
+              ["--wave-amp" as string]: `${Math.max(
+                1,
+                DOM_FISH_FONT_PX * species.scale * 0.08,
+              ).toFixed(1)}px`,
+            }}
+          >
+            {ch}
+          </span>
+        ))}
+      </pre>
     </div>
   );
 }
@@ -593,7 +617,6 @@ function Scene({
 
   return (
     <>
-      <AquariumFrameDriver performanceMode={performanceMode} />
       <WebGLContextGuard />
       <ambientLight intensity={1} />
 
@@ -629,52 +652,6 @@ function Scene({
   );
 }
 
-function AquariumFrameDriver({
-  performanceMode,
-}: {
-  performanceMode: boolean;
-}) {
-  const frameCountRef = useRef(0);
-  const lastReportFrameRef = useRef(0);
-
-  useFrame(() => {
-    frameCountRef.current += 1;
-    markAquariumFrame();
-  });
-
-  useEffect(() => {
-    markAquariumFrame();
-  }, []);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const frameCount = frameCountRef.current;
-      const framesSinceLastReport = frameCount - lastReportFrameRef.current;
-      lastReportFrameRef.current = frameCount;
-      const lastFrame = (window as Window & {
-        __cubismAquariumLastFrame?: number;
-      }).__cubismAquariumLastFrame;
-      // #region agent log
-      logAquariumDebug("H2,H3", "aquarium frame driver health", {
-        performanceMode,
-        frameCount,
-        framesSinceLastReport,
-        lastFrameAgeMs:
-          typeof lastFrame === "number" ? Date.now() - lastFrame : null,
-        visibilityState: document.visibilityState,
-        htmlOverlayCount: document.querySelectorAll("[data-cubism-aquarium-html]")
-          .length,
-        canvasCount: document.querySelectorAll("canvas").length,
-        memory: getAquariumDebugMemory(),
-      });
-      // #endregion
-    }, 60_000);
-    return () => window.clearInterval(id);
-  }, [performanceMode]);
-
-  return null;
-}
-
 /**
  * Keeps the aquarium alive across WebGL context loss — the #1 cause of a
  * "ran fine, then froze" on Raspberry Pi. The Pi's V3D driver drops the GL
@@ -697,24 +674,12 @@ function WebGLContextGuard() {
     const handleLost = (event: Event) => {
       // Without this the context is gone for good and the scene freezes.
       event.preventDefault();
-      // #region agent log
-      logAquariumDebug("H1", "webgl context lost", {
-        memory: getAquariumDebugMemory(),
-        visibilityState: document.visibilityState,
-      });
-      // #endregion
       if (typeof console !== "undefined") {
         console.warn("[ascii-aquarium] WebGL context lost; awaiting restore…");
       }
     };
 
     const handleRestored = () => {
-      // #region agent log
-      logAquariumDebug("H1", "webgl context restored", {
-        memory: getAquariumDebugMemory(),
-        visibilityState: document.visibilityState,
-      });
-      // #endregion
       if (typeof console !== "undefined") {
         console.warn("[ascii-aquarium] WebGL context restored");
       }
@@ -1043,7 +1008,6 @@ function Fish({
         // captured by overlay divs while the user interacts with
         // controls elsewhere.
         style={{ pointerEvents: "none" }}
-        data-cubism-aquarium-html="fish"
       >
         <div
           ref={depthRef}
@@ -1198,7 +1162,6 @@ function Seaweed({
         center
         distanceFactor={DISTANCE_FACTOR}
         style={{ pointerEvents: "none" }}
-        data-cubism-aquarium-html="seaweed"
       >
         <pre
           ref={preRef}
@@ -1333,7 +1296,6 @@ function Bubble({
         center
         distanceFactor={DISTANCE_FACTOR}
         style={{ pointerEvents: "none" }}
-        data-cubism-aquarium-html="bubble"
       >
         <pre
           style={{
@@ -1358,15 +1320,6 @@ function Bubble({
 // Utilities
 // ---------------------------------------------------------------------------
 
-function markAquariumFrame() {
-  if (typeof window === "undefined") return;
-  (
-    window as Window & {
-      __cubismAquariumLastFrame?: number;
-    }
-  ).__cubismAquariumLastFrame = Date.now();
-}
-
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
@@ -1377,4 +1330,37 @@ function worldToPercent(value: number, min: number, max: number): number {
   if (percent < 0) return 0;
   if (percent > 100) return 100;
   return percent;
+}
+
+function getDomFishSeparation(
+  index: number,
+  positions: FishPositions,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  let pushX = 0;
+  let pushY = 0;
+  const radius = FISH_SEPARATION_RADIUS * 0.95;
+
+  for (let i = 0; i < positions.length; i++) {
+    if (i === index) continue;
+    const other = positions[i];
+    if (!other) continue;
+    const dx = x - other.x;
+    const dy = y - other.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= 1e-6 || d2 >= radius * radius) continue;
+    const d = Math.sqrt(d2);
+    const strength = (radius - d) / radius;
+    pushX += (dx / d) * strength * 0.8;
+    pushY += (dy / d) * strength * 0.45;
+  }
+
+  return { x: pushX, y: pushY };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
 }

@@ -12,16 +12,6 @@ export type ControllerAction = "next" | "prev" | "select";
 
 export type DeviceStatus = "online" | "offline";
 
-export type DebugClientLogPayload = {
-  sessionId: string;
-  runId: string;
-  hypothesisId: string;
-  location: string;
-  message: string;
-  data: unknown;
-  timestamp: number;
-};
-
 /**
  * Wire-level Socket.IO event signatures. The protocol package intentionally
  * knows nothing about specific modules: module IDs are opaque strings and
@@ -219,8 +209,6 @@ export type ClientToServerEvents = {
 
   /** Clear the server-side conversation history for this user. */
   "ai:reset": (payload: { userId: string }) => void;
-
-  "debug:client-log": (payload: DebugClientLogPayload) => void;
 
   /**
    * Desktop-side notification that TTS playback (Piper audio blob or

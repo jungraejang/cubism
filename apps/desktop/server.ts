@@ -1,6 +1,4 @@
 import { createServer } from "node:http";
-import { appendFile } from "node:fs/promises";
-import path from "node:path";
 import { loadEnvConfig } from "@next/env";
 import next from "next";
 import { Server } from "socket.io";
@@ -29,10 +27,6 @@ loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME ?? "0.0.0.0";
 const port = Number(process.env.PORT ?? 3000);
-const DEBUG_SESSION_ID = "70f298";
-const DEBUG_LOG_PATH = process.cwd().endsWith(path.join("apps", "desktop"))
-  ? path.resolve(process.cwd(), "..", "..", "debug-70f298.log")
-  : path.resolve(process.cwd(), "debug-70f298.log");
 
 /**
  * AI Assistant orchestration — server-side defaults (overridable per
@@ -201,13 +195,6 @@ async function main() {
         deviceId: payload.deviceId,
         status: "online",
         lastSeenAt: payload.timestamp,
-      });
-    });
-
-    socket.on("debug:client-log", (payload) => {
-      if (payload.sessionId !== DEBUG_SESSION_ID) return;
-      appendFile(DEBUG_LOG_PATH, `${JSON.stringify(payload)}\n`).catch((err) => {
-        console.warn("[debug] failed to write client log:", err);
       });
     });
 

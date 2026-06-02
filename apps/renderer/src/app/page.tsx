@@ -4,73 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
 import { modules, type AnyCubismModule } from "@cubism/modules";
-import type { DebugClientLogPayload } from "@cubism/protocol";
 
 type ActiveModule = {
   module: AnyCubismModule;
   config: unknown;
 };
 
-type CubismRendererWindow = Window & {
-  __cubismAquariumLastFrame?: number;
-};
-
-const AQUARIUM_STALL_RELOAD_MS = 20_000;
-const SOCKET_DISCONNECTED_RELOAD_MS = 60_000;
-const WATCHDOG_INTERVAL_MS = 5_000;
-
-// #region agent log
-function logRendererDebug(
-  hypothesisId: string,
-  message: string,
-  data: Record<string, unknown>,
-) {
-  const payload: DebugClientLogPayload = {
-    sessionId: "70f298",
-    runId: "freeze-investigation",
-    hypothesisId,
-    location: "apps/renderer/src/app/page.tsx",
-    message,
-    data,
-    timestamp: Date.now(),
-  };
-  window.dispatchEvent(new CustomEvent("cubism:debug-log", { detail: payload }));
-  fetch("http://127.0.0.1:7781/ingest/15315dab-8f28-4100-9731-d02658e0d3cd", {
-    method: "POST",
-    keepalive: true,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "70f298",
-    },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-}
-
-function getRendererDebugMemory() {
-  const maybePerformance = performance as Performance & {
-    memory?: {
-      usedJSHeapSize?: number;
-      totalJSHeapSize?: number;
-      jsHeapSizeLimit?: number;
-    };
-  };
-  return maybePerformance.memory
-    ? {
-        usedJSHeapSize: maybePerformance.memory.usedJSHeapSize,
-        totalJSHeapSize: maybePerformance.memory.totalJSHeapSize,
-        jsHeapSizeLimit: maybePerformance.memory.jsHeapSizeLimit,
-      }
-    : null;
-}
-// #endregion
-
 export default function RendererHomePage() {
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
   const [active, setActive] = useState<ActiveModule | null>(null);
   const resizeFrameRef = useRef<number | null>(null);
-  const connectedRef = useRef(false);
-  const disconnectedSinceRef = useRef<number | null>(null);
   /**
    * Latest stream payload for the currently active module. Stored as state
    * (not just a ref) so module Renderers re-render when new frames arrive.
@@ -106,121 +50,14 @@ export default function RendererHomePage() {
   }, []);
 
   useEffect(() => {
-    function onDebugLog(event: Event) {
-      const payload = (event as CustomEvent<DebugClientLogPayload>).detail;
-      if (!payload || payload.sessionId !== "70f298") return;
-      socket.emit("debug:client-log", payload);
-    }
-
-    window.addEventListener("cubism:debug-log", onDebugLog);
-    return () => window.removeEventListener("cubism:debug-log", onDebugLog);
-  }, [socket]);
-
-  useEffect(() => {
     activeIdRef.current = active?.module.manifest.id ?? null;
-    if (active?.module.manifest.id === "ascii-aquarium") {
-      (window as CubismRendererWindow).__cubismAquariumLastFrame = Date.now();
-    }
-    // #region agent log
-    logRendererDebug("H5", "renderer active module changed", {
-      activeModuleId: active?.module.manifest.id ?? null,
-      connected: connectedRef.current,
-      socketConnected: socket.connected,
-      socketId: socket.id ?? null,
-    });
-    // #endregion
-  }, [active, socket]);
-
-  /**
-   * Pi kiosk watchdog. If the aquarium's R3F/Drei frame loop stalls, keyboard
-   * handling usually appears dead too because the browser renderer is wedged.
-   * A soft reload is the least surprising recovery path for a wall/kiosk app.
-   */
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const now = Date.now();
-
-      if (!connectedRef.current) {
-        const disconnectedSince = disconnectedSinceRef.current;
-        if (
-          disconnectedSince !== null &&
-          now - disconnectedSince > SOCKET_DISCONNECTED_RELOAD_MS
-        ) {
-          // #region agent log
-          logRendererDebug("H4", "watchdog reloading after socket disconnect", {
-            disconnectedForMs: now - disconnectedSince,
-            activeModuleId: activeIdRef.current,
-            socketConnected: socket.connected,
-            socketId: socket.id ?? null,
-            memory: getRendererDebugMemory(),
-          });
-          // #endregion
-          window.location.reload();
-        }
-        return;
-      }
-
-      if (activeIdRef.current !== "ascii-aquarium") return;
-
-      const lastFrame = (window as CubismRendererWindow)
-        .__cubismAquariumLastFrame;
-      if (
-        typeof lastFrame === "number" &&
-        now - lastFrame > AQUARIUM_STALL_RELOAD_MS
-      ) {
-        // #region agent log
-        logRendererDebug("H2,H4", "watchdog reloading after aquarium frame stall", {
-          lastFrameAgeMs: now - lastFrame,
-          activeModuleId: activeIdRef.current,
-          connected: connectedRef.current,
-          socketConnected: socket.connected,
-          socketId: socket.id ?? null,
-          visibilityState: document.visibilityState,
-          memory: getRendererDebugMemory(),
-        });
-        // #endregion
-        window.location.reload();
-      }
-    }, WATCHDOG_INTERVAL_MS);
-
-    return () => window.clearInterval(id);
-  }, [socket]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const lastFrame = (window as CubismRendererWindow)
-        .__cubismAquariumLastFrame;
-      // #region agent log
-      logRendererDebug("H2,H3,H4", "renderer page health", {
-        activeModuleId: activeIdRef.current,
-        connected: connectedRef.current,
-        socketConnected: socket.connected,
-        socketId: socket.id ?? null,
-        lastAquariumFrameAgeMs:
-          typeof lastFrame === "number" ? Date.now() - lastFrame : null,
-        visibilityState: document.visibilityState,
-        canvasCount: document.querySelectorAll("canvas").length,
-        memory: getRendererDebugMemory(),
-      });
-      // #endregion
-    }, 60_000);
-
-    return () => window.clearInterval(id);
-  }, [socket]);
+  }, [active]);
 
   useEffect(() => {
     socket.connect();
 
     socket.on("connect", () => {
-      connectedRef.current = true;
-      disconnectedSinceRef.current = null;
       setConnected(true);
-      // #region agent log
-      logRendererDebug("H3,H4", "renderer socket connected", {
-        socketId: socket.id ?? null,
-        activeModuleId: activeIdRef.current,
-      });
-      // #endregion
 
       socket.emit("client:register", {
         role: "renderer",
@@ -230,16 +67,7 @@ export default function RendererHomePage() {
     });
 
     socket.on("disconnect", () => {
-      connectedRef.current = false;
-      disconnectedSinceRef.current = Date.now();
       setConnected(false);
-      // #region agent log
-      logRendererDebug("H3,H4", "renderer socket disconnected", {
-        socketId: socket.id ?? null,
-        activeModuleId: activeIdRef.current,
-        memory: getRendererDebugMemory(),
-      });
-      // #endregion
     });
 
     socket.on("module:display", (payload) => {
