@@ -115,8 +115,8 @@ const MONO_FONT =
  * DOM performance renderer sizing. The DOM fallback bypasses drei's
  * distanceFactor scaling, so it needs its own larger screen-space font sizes.
  */
-const DOM_FISH_FONT_PX = 19;
-const DOM_SEAWEED_FONT_PX = 22;
+const DOM_FISH_FONT_PX = 22;
+const DOM_SEAWEED_FONT_PX = 25;
 const DOM_BUBBLE_FONT_BASE_PX = 18;
 
 /**
