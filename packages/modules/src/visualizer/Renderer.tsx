@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { orientationTransform } from "../_lib/orientation";
 import { PIXEL_SHIFT_DURATION_S, usePixelShift } from "../_lib/usePixelShift";
@@ -38,11 +38,13 @@ import { drawPlasma, createPlasmaState, type PlasmaState } from "./drawPlasma";
  * so the screen doesn't show a frozen visualization from minutes ago.
  */
 const FRAME_STALE_MS = 1_000;
+const PERFORMANCE_RENDER_SCALE = 0.75;
 
 export function VisualizerRenderer({
   config,
   streamData,
-}: RendererProps<VisualizerModuleConfig>) {
+  streamSource,
+}: RendererProps<VisualizerModuleConfig, VisualizerStreamFrame>) {
   // `streamData` is typed `unknown` in the generic Renderer contract; narrow
   // here so the rest of the component can use it as a VisualizerStreamFrame.
   const frame = streamData as VisualizerStreamFrame | undefined;
@@ -50,6 +52,9 @@ export function VisualizerRenderer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<VisualizerStreamFrame | null>(null);
   const lastFrameAtRef = useRef<number>(0);
+  const consumedStreamFrameRef = useRef<VisualizerStreamFrame | null>(null);
+  const liveFrameRef = useRef(false);
+  const [hasRecentFrame, setHasRecentFrame] = useState(false);
 
   const style = config.style ?? DEFAULT_STYLE;
   const {
@@ -73,25 +78,9 @@ export function VisualizerRenderer({
   const { rotate, scaleX, scaleY } = orientationTransform(config);
 
   useEffect(() => {
-    if (frame && (frame.samples || frame.freqs)) {
-      // Socket.IO serializes Uint8Arrays as Buffer-ish objects. Normalize
-      // both fields back to Uint8Array so the canvas drawing code can read
-      // them. We accept frames that only carry one of the two payloads
-      // (older desktops) so the renderer still works during a rolling
-      // upgrade.
-      const samples =
-        frame.samples instanceof Uint8Array
-          ? frame.samples
-          : frame.samples
-            ? new Uint8Array(frame.samples as ArrayLike<number>)
-            : new Uint8Array(WAVEFORM_SAMPLE_COUNT).fill(128);
-      const freqs =
-        frame.freqs instanceof Uint8Array
-          ? frame.freqs
-          : frame.freqs
-            ? new Uint8Array(frame.freqs as ArrayLike<number>)
-            : new Uint8Array(FREQUENCY_BIN_COUNT);
-      frameRef.current = { ...frame, samples, freqs };
+    const normalized = normalizeStreamFrame(frame);
+    if (normalized) {
+      frameRef.current = normalized;
       lastFrameAtRef.current = Date.now();
     }
   }, [frame]);
@@ -152,12 +141,14 @@ export function VisualizerRenderer({
     const flatSamples = new Uint8Array(WAVEFORM_SAMPLE_COUNT).fill(128);
     const flatFreqs = new Uint8Array(FREQUENCY_BIN_COUNT);
     /*
-     * On Pi 4 the canvas is software-rasterized; rendering at devicePixelRatio
-     * > 1 doubles every pixel the CPU has to touch. Cap it at 1 in
-     * performance mode — visually the bars look identical on a 1080p HDMI
-     * panel and the per-frame cost roughly quarters.
+     * On Pi 4 the canvas is software-rasterized. Performance mode paints at a
+     * smaller internal resolution while CSS keeps the same physical size; the
+     * browser upscales one bitmap instead of asking every draw helper to touch
+     * the full pixel count.
      */
-    const maxRatio = performanceMode ? 1 : window.devicePixelRatio || 1;
+    const maxRatio = performanceMode
+      ? PERFORMANCE_RENDER_SCALE
+      : window.devicePixelRatio || 1;
     /*
      * In performance mode throttle the draw loop to ~30fps. Audio data
      * still arrives at the original cadence; we just skip frames we don't
@@ -166,6 +157,12 @@ export function VisualizerRenderer({
     const minFrameInterval = performanceMode ? 33 : 0;
     let lastDrawAt = 0;
     let raf = 0;
+
+    function updateLiveState(next: boolean) {
+      if (liveFrameRef.current === next) return;
+      liveFrameRef.current = next;
+      setHasRecentFrame(next);
+    }
 
     function tick() {
       if (!canvas || !ctx) return;
@@ -184,9 +181,23 @@ export function VisualizerRenderer({
         canvas.height = height;
       }
 
+      const latestStreamFrame = streamSource?.getSnapshot();
+      if (
+        latestStreamFrame &&
+        latestStreamFrame !== consumedStreamFrameRef.current
+      ) {
+        consumedStreamFrameRef.current = latestStreamFrame;
+        const normalized = normalizeStreamFrame(latestStreamFrame);
+        if (normalized) {
+          frameRef.current = normalized;
+          lastFrameAtRef.current = Date.now();
+        }
+      }
+
       const fresh =
         frameRef.current &&
         Date.now() - lastFrameAtRef.current < FRAME_STALE_MS;
+      updateLiveState(fresh === true);
       const samples = fresh ? frameRef.current!.samples : flatSamples;
       const freqs = fresh ? frameRef.current!.freqs : flatFreqs;
 
@@ -321,7 +332,6 @@ export function VisualizerRenderer({
           lineWidth: lineWidth * ratio,
           sensitivity,
           showGrid,
-          performanceMode,
         });
       }
 
@@ -347,10 +357,8 @@ export function VisualizerRenderer({
     cellRows,
     triangleSize,
     performanceMode,
+    streamSource,
   ]);
-
-  const hasRecentFrame =
-    frameRef.current && Date.now() - lastFrameAtRef.current < FRAME_STALE_MS;
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-black">
@@ -398,13 +406,30 @@ export function VisualizerRenderer({
 }
 
 /**
- * Reusable output buffer for {@link resampleBars}. The draw loop calls
- * `resampleBars` every frame with a stable `target`, so allocating a
- * fresh `Uint8Array` each time just churns the GC (visible as periodic
- * stutter on the Pi). We keep one buffer and only reallocate when the
- * requested size changes. The returned array is consumed synchronously
- * by the draw function before the next frame, so sharing is safe.
+ * Socket.IO may deliver typed arrays as regular array-like objects. Normalize
+ * once when a new frame arrives so draw helpers can stay on Uint8Array paths.
  */
+function normalizeStreamFrame(
+  frame: VisualizerStreamFrame | undefined,
+): VisualizerStreamFrame | null {
+  if (!frame || (!frame.samples && !frame.freqs)) return null;
+
+  const samples =
+    frame.samples instanceof Uint8Array
+      ? frame.samples
+      : frame.samples
+        ? new Uint8Array(frame.samples as ArrayLike<number>)
+        : new Uint8Array(WAVEFORM_SAMPLE_COUNT).fill(128);
+  const freqs =
+    frame.freqs instanceof Uint8Array
+      ? frame.freqs
+      : frame.freqs
+        ? new Uint8Array(frame.freqs as ArrayLike<number>)
+        : new Uint8Array(FREQUENCY_BIN_COUNT);
+
+  return { ...frame, samples, freqs };
+}
+
 let resampleScratch: Uint8Array | null = null;
 
 /**

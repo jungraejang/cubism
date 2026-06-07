@@ -61,16 +61,6 @@ export type DrawFilledSpectrumOptions = {
   performanceMode?: boolean;
 };
 
-/**
- * Per-frame scratch buffers, reused across calls and reallocated only
- * when the step count changes (i.e. when `performanceMode` toggles).
- */
-let scratch: {
-  rawV: Float32Array;
-  xs: Float32Array;
-  ys: Float32Array;
-} | null = null;
-
 export function drawFilledSpectrum(
   ctx: CanvasRenderingContext2D,
   freqs: Uint8Array,
@@ -107,18 +97,9 @@ export function drawFilledSpectrum(
    * Sample → smooth → window. We share the same pipeline shape as
    * stacked-waves so the two styles read the same way visually.
    */
-  const len = xSteps + 1;
-  // Reuse scratch buffers across frames — rebuilt every call, so sharing
-  // them removes three typed-array allocations per frame (GC churn that
-  // shows up as periodic hitches on the Pi).
-  if (!scratch || scratch.rawV.length !== len) {
-    scratch = {
-      rawV: new Float32Array(len),
-      xs: new Float32Array(len),
-      ys: new Float32Array(len),
-    };
-  }
-  const { rawV, xs, ys } = scratch;
+  const rawV = new Float32Array(xSteps + 1);
+  const xs = new Float32Array(xSteps + 1);
+  const ys = new Float32Array(xSteps + 1);
 
   for (let s = 0; s <= xSteps; s++) {
     const xT = s / xSteps;

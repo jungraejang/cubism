@@ -14,14 +14,14 @@
  *
  * Performance strategy (Pi 4-friendly):
  *   - Render to a TINY offscreen buffer (≤192×~108 in normal mode,
- *     ≤112×~63 in performance mode). The visible canvas then upscales
+ *     ≤128×~72 in performance mode). The visible canvas then upscales
  *     this with bilinear smoothing, which is desirable here — the
  *     smoothing softens the plasma into the lava-lamp look.
  *   - Pack pixels into a Uint32 view of the ImageData buffer so each
  *     pixel write is one machine word instead of four byte stores.
  *   - The palette is precomputed (256 entries) into a Uint32Array once
- *     per color change. Per-pixel work is then 4× Math.sin + a cheap
- *     hypotenuse approximation (no sqrt) + 1× array lookup + 1× store.
+ *     per color change. Per-pixel work is then 4× Math.sin + 1× Math.sqrt
+ *     + 1× array lookup + 1× array store.
  *
  * Endianness note: we assume the target is little-endian (all browsers,
  * x86, ARM/Raspberry Pi). The packed-color expression
@@ -180,6 +180,7 @@ export function drawPlasma(
   const t = state.t;
   const t2 = state.t2;
   const sin = Math.sin;
+  const sqrt = Math.sqrt;
   /*
    * v ∈ [-4, 4]. To map to [0, 255] we multiply by 31.875 and offset.
    * Precompute that scale so the inner loop has one fewer instruction.
@@ -194,7 +195,7 @@ export function drawPlasma(
      */
     const sinY = sin(y / s2 + t);
     const dy = y - cy;
-    const ady = dy < 0 ? -dy : dy;
+    const dy2 = dy * dy;
     const ys3 = y / s3; // contribution of y to the diagonal term
     const rowOff = y * bw;
 
@@ -202,17 +203,7 @@ export function drawPlasma(
       const sinX = sin(x / s1 + t);
       const sinDiag = sin(ys3 + x / s3 + t);
       const dx = x - cx;
-      /*
-       * Distance to the wandering center drives the concentric ripple
-       * term. The exact value only feeds another `sin`, and the whole
-       * buffer is bilinearly upscaled afterward, so we can skip the
-       * per-pixel `Math.sqrt` and use the classic "alpha·max + beta·min"
-       * hypotenuse approximation (max error ~4%, invisible here). On the
-       * Pi this removes one sqrt from every pixel of the inner loop.
-       */
-      const adx = dx < 0 ? -dx : dx;
-      const dist =
-        adx > ady ? adx * 0.96043 + ady * 0.39782 : ady * 0.96043 + adx * 0.39782;
+      const dist = sqrt(dx * dx + dy2);
       const sinDist = sin(dist / s4 + t2);
 
       const v = sinX + sinY + sinDiag + sinDist;
@@ -306,10 +297,7 @@ function ensureBuffer(
    * per-frame pixel count manageable on the Pi.
    */
   const aspectRatio = width / Math.max(1, height);
-  // Perf mode trades a little crispness for ~23% fewer pixels through the
-  // per-pixel shader loop (112² vs 128²). The heavy bilinear upscale hides
-  // most of the resolution drop on a 1080p panel.
-  const targetMax = performanceMode ? 112 : 192;
+  const targetMax = performanceMode ? 128 : 192;
   let targetW: number;
   let targetH: number;
   if (aspectRatio >= 1) {

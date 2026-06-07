@@ -76,16 +76,6 @@ export type DrawStackedWavesOptions = {
   performanceMode?: boolean;
 };
 
-/**
- * Per-frame scratch buffers, reused across calls and reallocated only
- * when the step count changes (i.e. when `performanceMode` toggles).
- */
-let scratch: {
-  rawV: Float32Array;
-  offsets: Float32Array;
-  xs: Float32Array;
-} | null = null;
-
 export function drawStackedWaves(
   ctx: CanvasRenderingContext2D,
   freqs: Uint8Array,
@@ -145,18 +135,9 @@ export function drawStackedWaves(
    * moving-average gives the flowing, organic curves from the reference.
    */
   const SMOOTH_WINDOW = performanceMode ? 3 : 4;
-  const len = xSteps + 1;
-  // Reuse scratch buffers across frames — these are rebuilt from scratch
-  // every call, so sharing them avoids three typed-array allocations per
-  // frame (and the GC churn that causes periodic hitches on the Pi).
-  if (!scratch || scratch.rawV.length !== len) {
-    scratch = {
-      rawV: new Float32Array(len),
-      offsets: new Float32Array(len),
-      xs: new Float32Array(len),
-    };
-  }
-  const { rawV, offsets, xs } = scratch;
+  const rawV = new Float32Array(xSteps + 1);
+  const offsets = new Float32Array(xSteps + 1);
+  const xs = new Float32Array(xSteps + 1);
 
   for (let s = 0; s <= xSteps; s++) {
     const xT = s / xSteps; // 0..1

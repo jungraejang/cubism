@@ -31,40 +31,22 @@ export type Ring = {
 
 const POINT_COUNT = 128;
 const SHAPE_SMOOTHING_WINDOW = 3;
-
-/**
- * Cached unit-circle cos/sin tables keyed by step count. Both the ring
- * outlines (128 points each, up to `maxRings` of them) and the grid
- * wobble circle (96 points) re-evaluate `Math.cos`/`Math.sin` for the
- * SAME fixed set of angles every frame — at default settings that's
- * well over a thousand trig calls per frame on the Pi. The angles never
- * change, so we precompute them once per distinct step count and just
- * index in afterward.
- */
-const trigTables = new Map<number, { cos: Float32Array; sin: Float32Array }>();
-
-function getTrigTable(steps: number): { cos: Float32Array; sin: Float32Array } {
-  let table = trigTables.get(steps);
-  if (!table) {
-    const cos = new Float32Array(steps);
-    const sin = new Float32Array(steps);
-    for (let i = 0; i < steps; i++) {
-      const angle = (i / steps) * Math.PI * 2;
-      cos[i] = Math.cos(angle);
-      sin[i] = Math.sin(angle);
-    }
-    table = { cos, sin };
-    trigTables.set(steps, table);
-  }
-  return table;
-}
-
-/**
- * Scratch buffer for the raw (pre-smoothing) ring shape. The smoothed
- * result is copied into a fresh per-ring array that the caller retains,
- * but this intermediate is thrown away each tick — so we reuse it.
- */
 const rawShapeScratch = new Float32Array(POINT_COUNT);
+
+const angleCache = new Map<number, Float32Array>();
+function getAngleTable(pointCount: number): Float32Array {
+  const existing = angleCache.get(pointCount);
+  if (existing) return existing;
+
+  const out = new Float32Array(pointCount * 2);
+  for (let i = 0; i < pointCount; i++) {
+    const angle = (i / pointCount) * Math.PI * 2;
+    out[i * 2] = Math.cos(angle);
+    out[i * 2 + 1] = Math.sin(angle);
+  }
+  angleCache.set(pointCount, out);
+  return out;
+}
 
 export type DrawConcentricRingsOptions = {
   width: number;
@@ -121,6 +103,7 @@ export function tickAndDrawConcentricRings(
   const minDim = Math.min(width, height);
   const innerRadius = minDim * 0.06;
   const maxRadius = minDim * 0.48;
+  const ringAngles = getAngleTable(POINT_COUNT);
   /*
    * Per-point amplitude bound. We let bars push outward by up to this much
    * relative to their ring's base radius; sensitivity then scales that.
@@ -195,20 +178,20 @@ export function tickAndDrawConcentricRings(
     ctx.globalAlpha = 0.55 + 0.45 * bass;
     ctx.beginPath();
     const STEPS = 96;
+    const gridAngles = getAngleTable(STEPS);
     const lobes = 6; // visible wobble cadence around the circle
-    const grid = getTrigTable(STEPS);
     for (let i = 0; i <= STEPS; i++) {
       const idx = i % STEPS;
       // Mix two sources of wobble: a sine lobe (smooth ring "breathing")
       // and a sample from the FFT itself (audio-driven micro-tremor).
-      // sin(angle*lobes) with lobes=6 lands on table index (idx*6)%STEPS.
       const binIdx = Math.floor((idx / STEPS) * (freqs.length - 1));
       const fftWobble = freqs.length > 0 ? freqs[binIdx] / 255 - 0.5 : 0;
-      const lobeSin = grid.sin[(idx * lobes) % STEPS];
-      const offset = wobbleAmp * (lobeSin * 0.5 + fftWobble * 0.5);
+      const lobeSin = gridAngles[((idx * lobes) % STEPS) * 2 + 1];
+      const offset =
+        wobbleAmp * (lobeSin * 0.5 + fftWobble * 0.5);
       const r = baseR + offset;
-      const x = cx + r * grid.cos[idx];
-      const y = cy + r * grid.sin[idx];
+      const x = cx + r * gridAngles[idx * 2];
+      const y = cy + r * gridAngles[idx * 2 + 1];
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -226,8 +209,6 @@ export function tickAndDrawConcentricRings(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.lineWidth = lineWidth;
-
-  const ringTrig = getTrigTable(POINT_COUNT);
 
   /*
    * Draw oldest → newest so the brightest, freshest ring lands on top.
@@ -251,8 +232,8 @@ export function tickAndDrawConcentricRings(
       // Loop one extra index so the path closes seamlessly.
       const idx = j % POINT_COUNT;
       const r = ring.baseRadius + ring.shape[idx];
-      const x = cx + r * ringTrig.cos[idx];
-      const y = cy + r * ringTrig.sin[idx];
+      const x = cx + r * ringAngles[idx * 2];
+      const y = cy + r * ringAngles[idx * 2 + 1];
       if (j === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }

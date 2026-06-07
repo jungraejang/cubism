@@ -16,8 +16,8 @@ import type { CubismModule } from "./types";
  *     Renderer: ClockRenderer,
  *   });
  */
-export function defineModule<TConfig>(
-  spec: CubismModule<TConfig>,
-): CubismModule<TConfig> {
+export function defineModule<TConfig, TStream = unknown>(
+  spec: CubismModule<TConfig, TStream>,
+): CubismModule<TConfig, TStream> {
   return spec;
 }

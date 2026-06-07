@@ -94,17 +94,23 @@ export function drawPixelBars(
   const cellWidth = Math.max(1, colSlot - cellGapX);
   const cellHeight = Math.max(1, rowSlot - cellGapY);
 
-  // Per-row colors only depend on the two endpoint colors, the row
-  // count, and whether dark cells are needed — none of which change
-  // frame-to-frame in normal use. Recomputing the HSL strings every
-  // frame allocated dozens of strings per draw (GC churn on the Pi), so
-  // we memoize them and rebuild only when one of those inputs changes.
-  const { rowColors, darkRowColors } = getRowColors(
-    lineColor,
-    lineColor2,
-    cellRows,
-    showGrid,
-  );
+  // Precompute per-row colors using HSL hue interpolation.
+  const topHsl = hexToHsl(lineColor);
+  const botHsl = hexToHsl(lineColor2);
+  const rowColors = new Array<string>(cellRows);
+  // Optional dimmer-tinted versions for the unlit "dark cells" when
+  // `showGrid` is on — same hue, much lower lightness.
+  const darkRowColors = showGrid ? new Array<string>(cellRows) : null;
+  for (let r = 0; r < cellRows; r++) {
+    const t = cellRows === 1 ? 0 : r / (cellRows - 1);
+    const c = lerpHsl(topHsl, botHsl, t);
+    rowColors[r] = `hsl(${c.h.toFixed(1)},${c.s.toFixed(1)}%,${c.l.toFixed(1)}%)`;
+    if (darkRowColors) {
+      // 10% lightness, low saturation — enough to hint at the LED
+      // outline without competing with the lit cells.
+      darkRowColors[r] = `hsl(${c.h.toFixed(1)},${Math.min(c.s, 35).toFixed(1)}%,10%)`;
+    }
+  }
 
   /*
    * Optionally paint the dark "unlit" cells first so the active cells
@@ -164,47 +170,6 @@ export function drawPixelBars(
     ctx.stroke();
     ctx.restore();
   }
-}
-
-/**
- * Memoized per-row color strings. Keyed by the inputs that actually
- * affect the output so we rebuild the arrays (and their HSL strings)
- * only when the user changes colors / row count — not every frame.
- */
-let rowColorCache: {
-  key: string;
-  rowColors: string[];
-  darkRowColors: string[] | null;
-} | null = null;
-
-function getRowColors(
-  lineColor: string,
-  lineColor2: string,
-  cellRows: number,
-  showGrid: boolean,
-): { rowColors: string[]; darkRowColors: string[] | null } {
-  const key = `${lineColor}|${lineColor2}|${cellRows}|${showGrid ? 1 : 0}`;
-  if (rowColorCache && rowColorCache.key === key) {
-    return rowColorCache;
-  }
-
-  const topHsl = hexToHsl(lineColor);
-  const botHsl = hexToHsl(lineColor2);
-  const rowColors = new Array<string>(cellRows);
-  // Optional dimmer-tinted versions for the unlit "dark cells" when
-  // `showGrid` is on — same hue, much lower lightness.
-  const darkRowColors = showGrid ? new Array<string>(cellRows) : null;
-  for (let r = 0; r < cellRows; r++) {
-    const t = cellRows === 1 ? 0 : r / (cellRows - 1);
-    const c = lerpHsl(topHsl, botHsl, t);
-    rowColors[r] = `hsl(${c.h.toFixed(1)},${c.s.toFixed(1)}%,${c.l.toFixed(1)}%)`;
-    if (darkRowColors) {
-      darkRowColors[r] = `hsl(${c.h.toFixed(1)},${Math.min(c.s, 35).toFixed(1)}%,10%)`;
-    }
-  }
-
-  rowColorCache = { key, rowColors, darkRowColors };
-  return rowColorCache;
 }
 
 type Hsl = { h: number; s: number; l: number };

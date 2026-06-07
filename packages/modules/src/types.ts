@@ -38,6 +38,15 @@ export type ModuleStream = {
 };
 
 /**
+ * Pull-based companion for high-frequency streams. Renderers that draw from
+ * their own RAF loop can read the latest payload without forcing React state
+ * updates for every frame.
+ */
+export type ModuleStreamSource<TStream = unknown> = {
+  getSnapshot: () => TStream | undefined;
+};
+
+/**
  * Props every module's desktop Controls component receives. The component is
  * fully controlled: it never owns state, just emits changes via `onChange`.
  * The hosting desktop app stores the config map and decides when to dispatch
@@ -63,6 +72,7 @@ export type ControlsProps<TConfig> = {
 export type RendererProps<TConfig, TStream = unknown> = {
   config: TConfig;
   streamData?: TStream;
+  streamSource?: ModuleStreamSource<TStream>;
 };
 
 /**
@@ -77,11 +87,11 @@ export type RendererProps<TConfig, TStream = unknown> = {
  * visualizer cycles through its draw styles, for example. Return the next
  * config to apply, or `null`/`undefined` if there's nothing to change.
  */
-export type CubismModule<TConfig = unknown> = {
+export type CubismModule<TConfig = unknown, TStream = unknown> = {
   manifest: ModuleManifest<TConfig>;
   configSchema: ZodType<TConfig>;
   Controls: ComponentType<ControlsProps<TConfig>>;
-  Renderer: ComponentType<RendererProps<TConfig>>;
+  Renderer: ComponentType<RendererProps<TConfig, TStream>>;
   onPrimaryAction?: (config: TConfig) => TConfig | null | undefined;
 };
 
@@ -91,4 +101,4 @@ export type CubismModule<TConfig = unknown> = {
  * The concrete TConfig is recovered at runtime via the module's Zod schema.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyCubismModule = CubismModule<any>;
+export type AnyCubismModule = CubismModule<any, any>;
