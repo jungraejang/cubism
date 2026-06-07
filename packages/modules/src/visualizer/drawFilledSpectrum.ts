@@ -61,6 +61,30 @@ export type DrawFilledSpectrumOptions = {
   performanceMode?: boolean;
 };
 
+/*
+ * Per-frame scratch buffers, allocated once and reused across every call.
+ * Sized to the largest `xSteps` (160 in quality mode) so both quality and
+ * performance modes index safely. Reusing them avoids three Float32Array
+ * allocations per frame — at 30-60Hz that's a meaningful cut in GC pressure
+ * on the Pi.
+ */
+const MAX_X_STEPS = 160;
+const scratchRawV = new Float32Array(MAX_X_STEPS + 1);
+const scratchXs = new Float32Array(MAX_X_STEPS + 1);
+const scratchYs = new Float32Array(MAX_X_STEPS + 1);
+
+/*
+ * Gradient cache keyed by the rendering context. `createLinearGradient`
+ * returns a context-bound object, so we can't share one gradient across the
+ * renderer canvas and the Controls preview canvas — hence a WeakMap rather
+ * than a single module global. We rebuild only when the colors, baseline, or
+ * baked-in fade actually change.
+ */
+const gradientCache = new WeakMap<
+  CanvasRenderingContext2D,
+  { key: string; gradient: CanvasGradient }
+>();
+
 export function drawFilledSpectrum(
   ctx: CanvasRenderingContext2D,
   freqs: Uint8Array,
@@ -95,11 +119,13 @@ export function drawFilledSpectrum(
 
   /*
    * Sample → smooth → window. We share the same pipeline shape as
-   * stacked-waves so the two styles read the same way visually.
+   * stacked-waves so the two styles read the same way visually. The buffers
+   * are module-level scratch (sized to MAX_X_STEPS) reused across frames; we
+   * only ever touch indices [0, xSteps].
    */
-  const rawV = new Float32Array(xSteps + 1);
-  const xs = new Float32Array(xSteps + 1);
-  const ys = new Float32Array(xSteps + 1);
+  const rawV = scratchRawV;
+  const xs = scratchXs;
+  const ys = scratchYs;
 
   for (let s = 0; s <= xSteps; s++) {
     const xT = s / xSteps;
@@ -134,11 +160,38 @@ export function drawFilledSpectrum(
     ys[s] = baselineY - lift;
   }
 
-  // Build the vertical gradient. Canvas caches gradient objects per ctx
-  // by their colors / coords, so re-creating once per frame is fine.
-  const gradient = ctx.createLinearGradient(0, 0, 0, baselineY);
-  gradient.addColorStop(0, lineColor);
-  gradient.addColorStop(1, lineColor2);
+  /*
+   * Build (or reuse) the vertical fill gradient.
+   *
+   * In performance mode we bake the bottom fade straight into this gradient
+   * by darkening its lower stops to black, which lets us skip the separate
+   * `source-atop` composite pass below — compositing a full-canvas fillRect
+   * every frame is the single most expensive op for this style on the Pi's
+   * software-rasterized canvas. The fade fraction maps the pixel-space
+   * `fadeHeight = height * bottomFade` onto the gradient's [0,1] range over
+   * `baselineY` (= height * 0.98), so the fade onset lines up with the
+   * non-perf overlay.
+   */
+  const bakeFade = performanceMode && bottomFade > 0;
+  const fadeFraction = bakeFade
+    ? Math.min(0.95, (height * bottomFade) / baselineY)
+    : 0;
+  const gradKey = `${lineColor}|${lineColor2}|${baselineY}|${fadeFraction}`;
+  const cachedGradient = gradientCache.get(ctx);
+  let gradient: CanvasGradient;
+  if (cachedGradient && cachedGradient.key === gradKey) {
+    gradient = cachedGradient.gradient;
+  } else {
+    gradient = ctx.createLinearGradient(0, 0, 0, baselineY);
+    gradient.addColorStop(0, lineColor);
+    if (fadeFraction > 0) {
+      gradient.addColorStop(Math.max(0, 1 - fadeFraction), lineColor2);
+      gradient.addColorStop(1, "rgba(0,0,0,1)");
+    } else {
+      gradient.addColorStop(1, lineColor2);
+    }
+    gradientCache.set(ctx, { key: gradKey, gradient });
+  }
 
   /*
    * Build the silhouette path:
@@ -172,16 +225,20 @@ export function drawFilledSpectrum(
   ctx.fill();
 
   /*
-   * Bottom-fade overlay. With composite mode "source-atop" the gradient
-   * paints ONLY where the silhouette is already drawn, leaving the
-   * canvas background untouched. The overlay itself is a black-to-
-   * transparent vertical gradient ending in opaque black at the baseline,
-   * which smoothly blends the colored fill into the surrounding black.
+   * Bottom-fade overlay (quality mode only). With composite mode
+   * "source-atop" the gradient paints ONLY where the silhouette is already
+   * drawn, leaving the canvas background untouched. The overlay itself is a
+   * black-to-transparent vertical gradient ending in opaque black at the
+   * baseline, which smoothly blends the colored fill into the surrounding
+   * black.
+   *
+   * In performance mode this whole pass is skipped — the fade is baked into
+   * the fill gradient above instead, avoiding a per-frame composite.
    *
    * Clamp the fade height to [4px, baselineY] so a tall fade on a tiny
    * canvas can't invert.
    */
-  if (bottomFade > 0) {
+  if (bottomFade > 0 && !bakeFade) {
     const fadeHeight = Math.min(
       baselineY,
       Math.max(4, height * bottomFade),

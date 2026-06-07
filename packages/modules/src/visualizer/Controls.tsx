@@ -11,6 +11,7 @@ import {
   FREQUENCY_LAYOUT_OPTIONS,
   VISUALIZER_STYLE_OPTIONS,
   resolveStyleSettings,
+  styleNeedsSamples,
   type AudioSource,
   type PerStyleSettings,
   type VisualizerModuleConfig,
@@ -70,6 +71,8 @@ export function VisualizerControls({
   const [busy, setBusy] = useState(false);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastFrameRef = useRef<WaveformFrame | null>(getLastFrame());
+  /** Timestamp of the last frame pushed over the wire, for emit throttling. */
+  const lastEmitAtRef = useRef<number>(0);
 
   const style = config.style ?? DEFAULT_STYLE;
 
@@ -134,10 +137,21 @@ export function VisualizerControls({
    * the capture session running so the share doesn't have to be redone.
    */
   useEffect(() => {
+    // In performance mode cap the wire rate to ~30Hz: the renderer's draw loop
+    // is throttled to 30fps there anyway, so emitting at the full 60Hz capture
+    // rate only wastes LAN bandwidth and forces extra socket (de)serialization
+    // on the Pi. The local preview still updates at full rate via lastFrameRef.
+    const minEmitInterval = performanceMode ? 33 : 0;
+    // Spectrum-only styles never read the time-domain waveform, so we drop
+    // `samples` from the wire for them (~256 bytes/frame saved).
+    const sendSamples = styleNeedsSamples(style);
     setFrameSink((frame) => {
       lastFrameRef.current = frame;
+      const now = performance.now();
+      if (now - lastEmitAtRef.current < minEmitInterval) return;
+      lastEmitAtRef.current = now;
       const frameForWire: VisualizerStreamFrame = {
-        samples: frame.samples,
+        ...(sendSamples ? { samples: frame.samples } : {}),
         freqs: frame.freqs,
         peak: frame.peak,
         sentAt: Date.now(),
@@ -147,14 +161,14 @@ export function VisualizerControls({
     return () => {
       setFrameSink(null);
     };
-  }, [stream]);
+  }, [stream, performanceMode, style]);
 
   async function handleStart(source: AudioSource) {
     if (busy) return;
     setBusy(true);
     setStatus("Requesting audio source…");
     try {
-      await startSession(source);
+      await startSession(source, performanceMode ? 33 : 16);
       setStatus(
         source === "display"
           ? "Capturing system / tab audio."

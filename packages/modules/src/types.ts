@@ -38,6 +38,28 @@ export type ModuleStream = {
 };
 
 /**
+ * Imperative, ref-backed counterpart to `ModuleStream` on the renderer side.
+ *
+ * The host pushes high-frequency frames (e.g. ~60Hz audio waveforms) into a
+ * mutable buffer and notifies subscribers directly, WITHOUT triggering a
+ * React re-render. Modules that draw on a canvas subscribe once and read the
+ * latest frame from their own `requestAnimationFrame` loop, so the React tree
+ * stays static while frames stream in.
+ *
+ * Payloads are typed `unknown` because each module defines its own shape.
+ */
+export type StreamSource = {
+  /**
+   * Register a listener invoked once per received frame. Returns an
+   * unsubscribe function. The same payload is also retrievable via
+   * `getLatest()` for loops that poll rather than react to each frame.
+   */
+  subscribe: (listener: (data: unknown) => void) => () => void;
+  /** The most recently received frame, or `undefined` if none yet. */
+  getLatest: () => unknown;
+};
+
+/**
  * Props every module's desktop Controls component receives. The component is
  * fully controlled: it never owns state, just emits changes via `onChange`.
  * The hosting desktop app stores the config map and decides when to dispatch
@@ -59,10 +81,15 @@ export type ControlsProps<TConfig> = {
  * `streamData` is the latest payload emitted via `ModuleStream.emit` from the
  * desktop, validated to be of type `TStream` (defaults to unknown). Modules
  * that don't use streaming can ignore this prop.
+ *
+ * `streamSource` is the imperative, re-render-free alternative: high-frequency
+ * modules (e.g. the visualizer) subscribe to it from a canvas loop instead of
+ * reading `streamData`, so streaming frames never re-render the React tree.
  */
 export type RendererProps<TConfig, TStream = unknown> = {
   config: TConfig;
   streamData?: TStream;
+  streamSource?: StreamSource;
 };
 
 /**

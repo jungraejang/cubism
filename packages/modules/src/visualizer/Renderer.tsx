@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { orientationTransform } from "../_lib/orientation";
 import { PIXEL_SHIFT_DURATION_S, usePixelShift } from "../_lib/usePixelShift";
@@ -41,15 +41,63 @@ const FRAME_STALE_MS = 1_000;
 
 export function VisualizerRenderer({
   config,
-  streamData,
+  streamSource,
 }: RendererProps<VisualizerModuleConfig>) {
-  // `streamData` is typed `unknown` in the generic Renderer contract; narrow
-  // here so the rest of the component can use it as a VisualizerStreamFrame.
-  const frame = streamData as VisualizerStreamFrame | undefined;
   const pixelShift = usePixelShift();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<VisualizerStreamFrame | null>(null);
   const lastFrameAtRef = useRef<number>(0);
+
+  /*
+   * Whether a live frame is currently flowing. Unlike the raw frame data
+   * (which streams at ~60Hz and must never touch React state), this only
+   * flips on the fresh<->stale transition, so the "Waiting for audio" overlay
+   * toggles at most a couple of times per session rather than per frame.
+   */
+  const [hasLiveFrame, setHasLiveFrame] = useState(false);
+
+  /*
+   * Allocated once and reused as the fallback when a frame omits a payload
+   * (e.g. spectrum styles no longer ship time-domain `samples` over the
+   * wire). Keeping them stable avoids a per-frame allocation.
+   */
+  const flatSamples = useMemo(
+    () => new Uint8Array(WAVEFORM_SAMPLE_COUNT).fill(128),
+    [],
+  );
+  const flatFreqs = useMemo(() => new Uint8Array(FREQUENCY_BIN_COUNT), []);
+
+  /*
+   * Subscribe to the imperative frame bus. Each incoming frame is normalized
+   * once (Socket.IO may hand us Buffer-ish objects) and written straight into
+   * `frameRef` — no React state, so frames never re-render the tree. The rAF
+   * loop below reads `frameRef` on its own schedule.
+   */
+  useEffect(() => {
+    if (!streamSource) return;
+    const ingest = (data: unknown) => {
+      const f = data as VisualizerStreamFrame | undefined;
+      if (!f || (!f.samples && !f.freqs)) return;
+      const samples =
+        f.samples instanceof Uint8Array
+          ? f.samples
+          : f.samples
+            ? new Uint8Array(f.samples as ArrayLike<number>)
+            : flatSamples;
+      const freqs =
+        f.freqs instanceof Uint8Array
+          ? f.freqs
+          : f.freqs
+            ? new Uint8Array(f.freqs as ArrayLike<number>)
+            : flatFreqs;
+      frameRef.current = { samples, freqs, peak: f.peak };
+      lastFrameAtRef.current = Date.now();
+    };
+    // Pick up any frame that arrived before we subscribed.
+    const existing = streamSource.getLatest();
+    if (existing) ingest(existing);
+    return streamSource.subscribe(ingest);
+  }, [streamSource, flatSamples, flatFreqs]);
 
   const style = config.style ?? DEFAULT_STYLE;
   const {
@@ -71,30 +119,6 @@ export function VisualizerRenderer({
   } = resolveStyleSettings(config, style);
   const performanceMode = config.performanceMode ?? DEFAULT_PERFORMANCE_MODE;
   const { rotate, scaleX, scaleY } = orientationTransform(config);
-
-  useEffect(() => {
-    if (frame && (frame.samples || frame.freqs)) {
-      // Socket.IO serializes Uint8Arrays as Buffer-ish objects. Normalize
-      // both fields back to Uint8Array so the canvas drawing code can read
-      // them. We accept frames that only carry one of the two payloads
-      // (older desktops) so the renderer still works during a rolling
-      // upgrade.
-      const samples =
-        frame.samples instanceof Uint8Array
-          ? frame.samples
-          : frame.samples
-            ? new Uint8Array(frame.samples as ArrayLike<number>)
-            : new Uint8Array(WAVEFORM_SAMPLE_COUNT).fill(128);
-      const freqs =
-        frame.freqs instanceof Uint8Array
-          ? frame.freqs
-          : frame.freqs
-            ? new Uint8Array(frame.freqs as ArrayLike<number>)
-            : new Uint8Array(FREQUENCY_BIN_COUNT);
-      frameRef.current = { ...frame, samples, freqs };
-      lastFrameAtRef.current = Date.now();
-    }
-  }, [frame]);
 
   /*
    * Single requestAnimationFrame loop. We draw whatever is in frameRef on
@@ -149,8 +173,6 @@ export function VisualizerRenderer({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const flatSamples = new Uint8Array(WAVEFORM_SAMPLE_COUNT).fill(128);
-    const flatFreqs = new Uint8Array(FREQUENCY_BIN_COUNT);
     /*
      * On Pi 4 the canvas is software-rasterized; rendering at devicePixelRatio
      * > 1 doubles every pixel the CPU has to touch. Cap it at 1 in
@@ -166,6 +188,9 @@ export function VisualizerRenderer({
     const minFrameInterval = performanceMode ? 33 : 0;
     let lastDrawAt = 0;
     let raf = 0;
+    // Mirror of `hasLiveFrame` so we only call setState on the actual
+    // fresh<->stale transition rather than every drawn frame.
+    let lastFresh: boolean | null = null;
 
     function tick() {
       if (!canvas || !ctx) return;
@@ -184,10 +209,18 @@ export function VisualizerRenderer({
         canvas.height = height;
       }
 
-      const fresh =
+      const fresh = Boolean(
         frameRef.current &&
-        Date.now() - lastFrameAtRef.current < FRAME_STALE_MS;
-      const samples = fresh ? frameRef.current!.samples : flatSamples;
+          Date.now() - lastFrameAtRef.current < FRAME_STALE_MS,
+      );
+      if (fresh !== lastFresh) {
+        lastFresh = fresh;
+        setHasLiveFrame(fresh);
+      }
+      const samples =
+        fresh && frameRef.current!.samples
+          ? frameRef.current!.samples
+          : flatSamples;
       const freqs = fresh ? frameRef.current!.freqs : flatFreqs;
 
       if (style === "radial-spectrum") {
@@ -346,10 +379,11 @@ export function VisualizerRenderer({
     cellRows,
     triangleSize,
     performanceMode,
+    flatSamples,
+    flatFreqs,
   ]);
 
-  const hasRecentFrame =
-    frameRef.current && Date.now() - lastFrameAtRef.current < FRAME_STALE_MS;
+  const hasRecentFrame = hasLiveFrame;
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-black">

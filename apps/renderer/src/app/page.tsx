@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
-import { modules, type AnyCubismModule } from "@cubism/modules";
+import {
+  modules,
+  type AnyCubismModule,
+  type StreamSource,
+} from "@cubism/modules";
 
 type ActiveModule = {
   module: AnyCubismModule;
@@ -16,12 +20,18 @@ export default function RendererHomePage() {
   const [active, setActive] = useState<ActiveModule | null>(null);
   const resizeFrameRef = useRef<number | null>(null);
   /**
-   * Latest stream payload for the currently active module. Stored as state
-   * (not just a ref) so module Renderers re-render when new frames arrive.
-   * Only kept for the active module - frames for any other module are
-   * discarded since they'd be invisible anyway.
+   * Ref-backed frame bus for the active module's real-time stream. We
+   * deliberately do NOT store frames in React state: the visualizer (the only
+   * stream consumer) arrives at ~60Hz, and a `setState` per frame would
+   * re-render the entire renderer tree — including the framer-motion carousel
+   * — 60 times a second, which stutters badly on the Pi. Instead we stash the
+   * latest payload in a mutable ref and notify subscribers imperatively, so
+   * the module's own canvas loop reads frames without any React churn.
    */
-  const [streamData, setStreamData] = useState<unknown>(undefined);
+  const streamBusRef = useRef<{
+    latest: unknown;
+    listeners: Set<(data: unknown) => void>;
+  }>({ latest: undefined, listeners: new Set() });
   /**
    * The active module id mirrored into a ref so the high-frequency
    * `module:stream` handler can filter without re-binding on every state
@@ -38,6 +48,24 @@ export default function RendererHomePage() {
 
   const deviceId = process.env.NEXT_PUBLIC_DEVICE_ID ?? "pi-holo-001";
   const userId = process.env.NEXT_PUBLIC_USER_ID ?? "demo-user";
+
+  /**
+   * Stable handle passed to the active module's Renderer. Referentially
+   * constant for the page's lifetime so subscribing modules don't re-bind on
+   * every render. Reads/writes go through `streamBusRef`.
+   */
+  const streamSource = useMemo<StreamSource>(
+    () => ({
+      subscribe: (listener) => {
+        streamBusRef.current.listeners.add(listener);
+        return () => {
+          streamBusRef.current.listeners.delete(listener);
+        };
+      },
+      getLatest: () => streamBusRef.current.latest,
+    }),
+    [],
+  );
 
   const scheduleCanvasResize = useCallback(() => {
     if (resizeFrameRef.current !== null) return;
@@ -100,7 +128,7 @@ export default function RendererHomePage() {
         // Reset stream data when switching modules so a new module doesn't
         // briefly render with stale frames from the previous one.
         if (!prev || prev.module.manifest.id !== mod.manifest.id) {
-          setStreamData(undefined);
+          streamBusRef.current.latest = undefined;
         }
         return { module: mod, config: parsed.data };
       });
@@ -114,7 +142,12 @@ export default function RendererHomePage() {
 
     socket.on("module:stream", (payload) => {
       if (payload.moduleId !== activeIdRef.current) return;
-      setStreamData(payload.data);
+      // Imperative fan-out: stash the latest frame and notify subscribers
+      // directly. No setState here, so streaming frames never re-render the
+      // React tree.
+      const bus = streamBusRef.current;
+      bus.latest = payload.data;
+      for (const listener of bus.listeners) listener(payload.data);
     });
 
     return () => {
@@ -273,7 +306,7 @@ export default function RendererHomePage() {
             }}
             className="absolute inset-0"
           >
-            <ActiveRenderer config={active.config} streamData={streamData} />
+            <ActiveRenderer config={active.config} streamSource={streamSource} />
           </motion.div>
         ) : (
           <motion.main

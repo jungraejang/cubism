@@ -478,24 +478,35 @@ export function resolveStyleSettings(
 /**
  * Wire shape for one visualizer frame.
  *
- *  - `samples` is the time-domain waveform used by the oscilloscope style.
- *    256 bytes, 128 = silence, 0/255 = extremes.
+ *  - `samples` is the time-domain waveform used by the oscilloscope and
+ *    fractal styles. 256 bytes, 128 = silence, 0/255 = extremes. Optional:
+ *    spectrum-only styles omit it from the wire to halve per-frame bytes
+ *    (see `styleNeedsSamples`); the renderer falls back to a flat buffer.
  *  - `freqs` is a log-spaced frequency-magnitude array (Uint8) for the
  *    radial-spectrum style. Lower indices = lower frequencies.
  *
- * Both are always populated so the renderer can switch styles at any time
- * without needing a fresh capture pipeline. ~256 + 128 = 384 bytes/frame,
- * ~23 KB/s at 60 Hz.
- *
  * The peak field is computed once on the desktop and reused by the renderer
  * to scale things like the line glow, avoiding an O(N) scan per frame.
+ *
+ * `sentAt` is optional: it's a desktop-side debugging timestamp the renderer
+ * doesn't depend on, so frames constructed on the renderer can omit it.
  */
 export type VisualizerStreamFrame = {
-  samples: Uint8Array;
+  samples?: Uint8Array;
   freqs: Uint8Array;
   peak: number;
-  sentAt: number;
+  sentAt?: number;
 };
+
+/**
+ * Whether a given style consumes the time-domain `samples` payload. Only the
+ * oscilloscope (raw waveform) and fractal (samples-driven feedback) styles do;
+ * every other style reads `freqs` only. The desktop uses this to avoid
+ * shipping ~256 bytes/frame of unused waveform data for spectrum styles.
+ */
+export function styleNeedsSamples(style: VisualizerStyle): boolean {
+  return style === "oscilloscope" || style === "fractal";
+}
 
 export const WAVEFORM_SAMPLE_COUNT = 256;
 export const FREQUENCY_BIN_COUNT = 128;

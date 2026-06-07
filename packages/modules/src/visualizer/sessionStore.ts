@@ -57,7 +57,10 @@ export function subscribeSession(listener: () => void): () => void {
   };
 }
 
-export async function startSession(source: AudioSource): Promise<void> {
+export async function startSession(
+  source: AudioSource,
+  tickIntervalMs?: number,
+): Promise<void> {
   if (session) {
     const prev = session;
     session = null;
@@ -80,6 +83,7 @@ export async function startSession(source: AudioSource): Promise<void> {
         notifyListeners();
       }
     },
+    { tickIntervalMs },
   );
 
   session = next;

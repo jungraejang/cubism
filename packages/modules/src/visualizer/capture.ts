@@ -51,11 +51,23 @@ export type WaveformFrame = {
  * underlying audio track (user clicked "stop sharing" in the pill, closed
  * the source tab, etc.). Useful for keeping external state in sync.
  */
+export type StartCaptureOptions = {
+  /**
+   * Interval (ms) between analyser reads / frame emits. Defaults to ~60Hz.
+   * Performance mode passes ~33ms (30Hz) to halve the desktop's per-frame
+   * analyser-read + downsample work (and, paired with the Controls emit
+   * throttle, the wire rate too).
+   */
+  tickIntervalMs?: number;
+};
+
 export async function startCapture(
   source: AudioSource,
   onFrame: (frame: WaveformFrame) => void,
   onEnd?: () => void,
+  options?: StartCaptureOptions,
 ): Promise<CaptureSession> {
+  const tickIntervalMs = options?.tickIntervalMs ?? 16;
   const stream = await acquireStream(source);
 
   // Some browsers fire `getDisplayMedia` and return without an audio track if
@@ -201,7 +213,7 @@ export async function startCapture(
     });
   }
 
-  const ticker = createBackgroundTicker(16, tick);
+  const ticker = createBackgroundTicker(tickIntervalMs, tick);
 
   function stop() {
     if (stopped) return;
