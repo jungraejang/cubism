@@ -71,7 +71,7 @@ function __dbgEmitFlush(now: number, performanceMode: boolean) {
       },
       body: JSON.stringify({
         sessionId: "a0adec",
-        runId: "run1",
+        runId: "post-fix",
         hypothesisId: "B,C,G",
         location: "Controls.tsx:sink",
         message: "emit stats/sec",
@@ -128,8 +128,6 @@ export function VisualizerControls({
   const [busy, setBusy] = useState(false);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastFrameRef = useRef<WaveformFrame | null>(getLastFrame());
-  /** Timestamp of the last frame pushed over the wire, for emit throttling. */
-  const lastEmitAtRef = useRef<number>(0);
 
   const style = config.style ?? DEFAULT_STYLE;
 
@@ -194,29 +192,17 @@ export function VisualizerControls({
    * the capture session running so the share doesn't have to be redone.
    */
   useEffect(() => {
-    // In performance mode cap the wire rate to ~30Hz: the renderer's draw loop
-    // is throttled to 30fps there anyway, so emitting at the full 60Hz capture
-    // rate only wastes LAN bandwidth and forces extra socket (de)serialization
-    // on the Pi. The local preview still updates at full rate via lastFrameRef.
-    const minEmitInterval = performanceMode ? 33 : 0;
-    // Spectrum-only styles never read the time-domain waveform, so we drop
-    // `samples` from the wire for them (~256 bytes/frame saved).
+    // Emit every captured frame. The capture ticker is the single rate
+    // limiter; a second time-gate here (previously added for perf mode) sat
+    // at the same ~33ms period as the tick and produced a beat that dropped
+    // ~1/3 of frames irregularly (33/66ms gaps) — the source of the stutter.
+    // Spectrum-only styles still drop `samples` from the wire (~256 B/frame).
     const sendSamples = styleNeedsSamples(style);
     setFrameSink((frame) => {
       lastFrameRef.current = frame;
       const now = performance.now();
       // #region agent log
       __dbgEmit.sink++;
-      // #endregion
-      if (now - lastEmitAtRef.current < minEmitInterval) {
-        // #region agent log
-        __dbgEmit.drop++;
-        __dbgEmitFlush(now, performanceMode);
-        // #endregion
-        return;
-      }
-      lastEmitAtRef.current = now;
-      // #region agent log
       __dbgEmit.emit++;
       if (__dbgEmit.lastEmit) {
         const g = now - __dbgEmit.lastEmit;
@@ -246,7 +232,7 @@ export function VisualizerControls({
     setBusy(true);
     setStatus("Requesting audio source…");
     try {
-      await startSession(source, performanceMode ? 33 : 16);
+      await startSession(source);
       setStatus(
         source === "display"
           ? "Capturing system / tab audio."

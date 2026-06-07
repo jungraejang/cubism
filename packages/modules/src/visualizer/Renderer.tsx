@@ -68,7 +68,7 @@ function __dbgDrawFlush(now: number, performanceMode: boolean) {
       },
       body: JSON.stringify({
         sessionId: "a0adec",
-        runId: "run1",
+        runId: "post-fix",
         hypothesisId: "A,D,G",
         location: "Renderer.tsx:tick",
         message: "draw stats/sec",
