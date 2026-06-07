@@ -66,22 +66,55 @@ Visit <http://localhost:3000> to verify the bridge is up (or hit `http://localho
 
 ## Raspberry Pi kiosk
 
-On the Pi, build and serve the renderer, then launch Chromium in kiosk mode:
+On the Pi, build the renderer once, then run the one-shot kiosk command. It
+starts the renderer server, waits for it to come up, hides the mouse cursor,
+and opens the UI fullscreen in Chromium:
 
 ```bash
-pnpm --filter renderer build
-pnpm --filter renderer start
+pnpm --filter renderer build   # only needed after pulling new code
 
-chromium-browser \
-  --kiosk \
-  --disable-infobars \
-  --noerrdialogs \
-  http://localhost:3001
+sudo apt install unclutter     # one-time: lets the script hide the cursor
+pnpm kiosk                      # start server + open fullscreen Chromium
+```
+
+`pnpm kiosk` runs [`apps/renderer/scripts/kiosk.sh`](./apps/renderer/scripts/kiosk.sh).
+Closing Chromium (or `Ctrl+C`) also shuts the renderer server down. Useful
+overrides:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CUBISM_RENDERER_URL` | `http://localhost:3001` | URL Chromium opens |
+| `CUBISM_KIOSK_SERVE` | `1` | `0` = don't start the server (it's already running) |
+| `CUBISM_KIOSK_WAIT` | `60` | Seconds to wait for the server before giving up |
+
+If you prefer to run the server yourself (e.g. under another process), launch
+the browser only with `CUBISM_KIOSK_SERVE=0 pnpm kiosk`. The old manual flow
+still works too:
+
+```bash
+pnpm --filter renderer start
+chromium-browser --kiosk --disable-infobars --noerrdialogs http://localhost:3001
 ```
 
 In `apps/renderer/.env.local` on the Pi, set `NEXT_PUBLIC_SOCKET_URL` to the LAN address of the machine running the desktop app — e.g. `http://192.168.1.42:3000`. Open port 3000 in the desktop machine's firewall.
 
-A systemd service can wrap both processes for auto-start on boot.
+### Auto-start on boot
+
+To bring the kiosk up automatically when the Pi boots, install the bundled
+**user** systemd unit (it needs the logged-in desktop session for the display):
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp apps/renderer/systemd/cubism-renderer.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now cubism-renderer
+sudo loginctl enable-linger pi   # start it without needing an SSH login
+```
+
+This requires the Pi to boot to the desktop with autologin (`raspi-config` →
+**System Options → Boot / Auto Login → Desktop Autologin**). Edit the paths in
+the unit if you cloned the repo somewhere other than
+`/home/pi/Documents/Projects/cubism`.
 
 ## Architecture
 

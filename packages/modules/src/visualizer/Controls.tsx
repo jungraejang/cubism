@@ -45,63 +45,6 @@ import {
   subscribeSession,
 } from "./sessionStore";
 
-// #region agent log
-const __dbgEmit = {
-  sink: 0,
-  emit: 0,
-  drop: 0,
-  lastEmit: 0,
-  gapSum: 0,
-  gapN: 0,
-  gapMax: 0,
-  gapMin: 1e9,
-  ws: 0,
-};
-function __dbgEmitFlush(now: number, performanceMode: boolean) {
-  if (__dbgEmit.ws === 0) __dbgEmit.ws = now;
-  const dur = now - __dbgEmit.ws;
-  if (dur < 1000) return;
-  fetch(
-    "http://127.0.0.1:7349/ingest/dfe4b849-19b2-4b66-bdde-7911ccd8e8d4",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "a0adec",
-      },
-      body: JSON.stringify({
-        sessionId: "a0adec",
-        runId: "post-fix",
-        hypothesisId: "B,C,G",
-        location: "Controls.tsx:sink",
-        message: "emit stats/sec",
-        data: {
-          performanceMode,
-          durMs: Math.round(dur),
-          sinkPerSec: +((__dbgEmit.sink / dur) * 1000).toFixed(1),
-          emitPerSec: +((__dbgEmit.emit / dur) * 1000).toFixed(1),
-          dropPerSec: +((__dbgEmit.drop / dur) * 1000).toFixed(1),
-          gapAvg: __dbgEmit.gapN
-            ? +(__dbgEmit.gapSum / __dbgEmit.gapN).toFixed(1)
-            : 0,
-          gapMin: __dbgEmit.gapMin === 1e9 ? 0 : +__dbgEmit.gapMin.toFixed(1),
-          gapMax: +__dbgEmit.gapMax.toFixed(1),
-        },
-        timestamp: Date.now(),
-      }),
-    },
-  ).catch(() => {});
-  __dbgEmit.sink = 0;
-  __dbgEmit.emit = 0;
-  __dbgEmit.drop = 0;
-  __dbgEmit.gapSum = 0;
-  __dbgEmit.gapN = 0;
-  __dbgEmit.gapMax = 0;
-  __dbgEmit.gapMin = 1e9;
-  __dbgEmit.ws = now;
-}
-// #endregion
-
 export function VisualizerControls({
   config,
   onChange,
@@ -200,20 +143,6 @@ export function VisualizerControls({
     const sendSamples = styleNeedsSamples(style);
     setFrameSink((frame) => {
       lastFrameRef.current = frame;
-      const now = performance.now();
-      // #region agent log
-      __dbgEmit.sink++;
-      __dbgEmit.emit++;
-      if (__dbgEmit.lastEmit) {
-        const g = now - __dbgEmit.lastEmit;
-        __dbgEmit.gapSum += g;
-        __dbgEmit.gapN++;
-        if (g > __dbgEmit.gapMax) __dbgEmit.gapMax = g;
-        if (g < __dbgEmit.gapMin) __dbgEmit.gapMin = g;
-      }
-      __dbgEmit.lastEmit = now;
-      __dbgEmitFlush(now, performanceMode);
-      // #endregion
       const frameForWire: VisualizerStreamFrame = {
         ...(sendSamples ? { samples: frame.samples } : {}),
         freqs: frame.freqs,

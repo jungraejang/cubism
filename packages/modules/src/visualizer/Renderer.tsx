@@ -39,73 +39,6 @@ import { drawPlasma, createPlasmaState, type PlasmaState } from "./drawPlasma";
  */
 const FRAME_STALE_MS = 1_000;
 
-// #region agent log
-const __dbgDraw = {
-  draws: 0,
-  fresh: 0,
-  stale: 0,
-  toggles: 0,
-  ageSum: 0,
-  ageN: 0,
-  lastDraw: 0,
-  gapSum: 0,
-  gapN: 0,
-  gapMax: 0,
-  gapMin: 1e9,
-  ws: 0,
-};
-function __dbgDrawFlush(now: number, performanceMode: boolean) {
-  if (__dbgDraw.ws === 0) __dbgDraw.ws = now;
-  const dur = now - __dbgDraw.ws;
-  if (dur < 1000) return;
-  fetch(
-    "http://127.0.0.1:7349/ingest/dfe4b849-19b2-4b66-bdde-7911ccd8e8d4",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "a0adec",
-      },
-      body: JSON.stringify({
-        sessionId: "a0adec",
-        runId: "post-fix",
-        hypothesisId: "A,D,G",
-        location: "Renderer.tsx:tick",
-        message: "draw stats/sec",
-        data: {
-          performanceMode,
-          durMs: Math.round(dur),
-          drawPerSec: +((__dbgDraw.draws / dur) * 1000).toFixed(1),
-          freshDraws: __dbgDraw.fresh,
-          staleDraws: __dbgDraw.stale,
-          overlayToggles: __dbgDraw.toggles,
-          frameAgeAvgMs: __dbgDraw.ageN
-            ? +(__dbgDraw.ageSum / __dbgDraw.ageN).toFixed(1)
-            : 0,
-          drawGapAvg: __dbgDraw.gapN
-            ? +(__dbgDraw.gapSum / __dbgDraw.gapN).toFixed(1)
-            : 0,
-          drawGapMin: __dbgDraw.gapMin === 1e9 ? 0 : +__dbgDraw.gapMin.toFixed(1),
-          drawGapMax: +__dbgDraw.gapMax.toFixed(1),
-        },
-        timestamp: Date.now(),
-      }),
-    },
-  ).catch(() => {});
-  __dbgDraw.draws = 0;
-  __dbgDraw.fresh = 0;
-  __dbgDraw.stale = 0;
-  __dbgDraw.toggles = 0;
-  __dbgDraw.ageSum = 0;
-  __dbgDraw.ageN = 0;
-  __dbgDraw.gapSum = 0;
-  __dbgDraw.gapN = 0;
-  __dbgDraw.gapMax = 0;
-  __dbgDraw.gapMin = 1e9;
-  __dbgDraw.ws = now;
-}
-// #endregion
-
 export function VisualizerRenderer({
   config,
   streamSource,
@@ -267,17 +200,6 @@ export function VisualizerRenderer({
         return;
       }
       lastDrawAt = now;
-      // #region agent log
-      __dbgDraw.draws++;
-      if (__dbgDraw.lastDraw) {
-        const g = now - __dbgDraw.lastDraw;
-        __dbgDraw.gapSum += g;
-        __dbgDraw.gapN++;
-        if (g > __dbgDraw.gapMax) __dbgDraw.gapMax = g;
-        if (g < __dbgDraw.gapMin) __dbgDraw.gapMin = g;
-      }
-      __dbgDraw.lastDraw = now;
-      // #endregion
 
       const ratio = Math.min(window.devicePixelRatio || 1, maxRatio);
       const width = canvas.clientWidth * ratio;
@@ -294,20 +216,7 @@ export function VisualizerRenderer({
       if (fresh !== lastFresh) {
         lastFresh = fresh;
         setHasLiveFrame(fresh);
-        // #region agent log
-        __dbgDraw.toggles++;
-        // #endregion
       }
-      // #region agent log
-      if (fresh) {
-        __dbgDraw.fresh++;
-        __dbgDraw.ageSum += Date.now() - lastFrameAtRef.current;
-        __dbgDraw.ageN++;
-      } else {
-        __dbgDraw.stale++;
-      }
-      __dbgDrawFlush(now, performanceMode);
-      // #endregion
       const samples =
         fresh && frameRef.current!.samples
           ? frameRef.current!.samples

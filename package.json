@@ -6,6 +6,7 @@
     "dev:desktop": "pnpm --filter desktop dev",
     "dev:renderer": "pnpm --filter renderer dev",
     "dev": "concurrently -n desktop,renderer -c cyan,green \"pnpm dev:desktop\" \"pnpm dev:renderer\"",
+    "kiosk": "pnpm --filter renderer kiosk",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"

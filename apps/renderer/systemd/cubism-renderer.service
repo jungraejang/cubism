@@ -1,0 +1,31 @@
+# Auto-launch the Cubism renderer in fullscreen Chromium kiosk on boot.
+#
+# This is a *user* service (it needs the logged-in graphical session for the
+# display + cursor), so install it under the `pi` user, NOT system-wide:
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp apps/renderer/systemd/cubism-renderer.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now cubism-renderer
+#   sudo loginctl enable-linger pi   # let it start before/without an SSH login
+#
+# Requires the Pi to boot to the desktop with autologin (raspi-config ->
+# System Options -> Boot / Auto Login -> Desktop Autologin) and `unclutter`
+# installed (sudo apt install unclutter) for the cursor to disappear.
+
+[Unit]
+Description=Cubism renderer kiosk (fullscreen Chromium hologram UI)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Adjust the path if you cloned the repo elsewhere.
+WorkingDirectory=/home/pi/Documents/Projects/cubism
+# `bash -lc` sources the login shell so pnpm/node (incl. nvm) are on PATH.
+ExecStart=/bin/bash -lc 'cd /home/pi/Documents/Projects/cubism && pnpm --filter renderer kiosk'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target
