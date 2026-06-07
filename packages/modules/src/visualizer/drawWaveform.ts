@@ -13,6 +13,14 @@ export type DrawWaveformOptions = {
   /** Multiplier applied to each sample's vertical deflection. */
   sensitivity: number;
   showGrid: boolean;
+  /**
+   * Skip the `shadowBlur` glow pass on Pi-class hardware. Canvas
+   * `shadowBlur` is the single most expensive 2D operation on the Pi's
+   * software rasterizer; in perf mode we fake the glow with a wider
+   * translucent underlay stroke (a couple of cheap strokes) which reads
+   * almost identically on a 1080p panel but costs a fraction as much.
+   */
+  performanceMode?: boolean;
 };
 
 export function drawWaveform(
@@ -29,6 +37,7 @@ export function drawWaveform(
     lineWidth,
     sensitivity,
     showGrid,
+    performanceMode = false,
   } = opts;
 
   ctx.clearRect(0, 0, width, height);
@@ -58,31 +67,45 @@ export function drawWaveform(
 
   if (samples.length === 0) return;
 
-  const path = new Path2D();
+  // Trace the waveform straight onto the context path rather than into a
+  // throwaway `Path2D` — saves one allocation every frame and lets us
+  // re-stroke the same path for the glow passes without rebuilding it.
   const mid = height / 2;
   const step = width / (samples.length - 1);
+  ctx.beginPath();
   for (let i = 0; i < samples.length; i++) {
     const v = (samples[i] - 128) / 128;
     const y = mid - v * mid * sensitivity;
     const x = i * step;
-    if (i === 0) path.moveTo(x, y);
-    else path.lineTo(x, y);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   }
 
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.strokeStyle = glowColor;
-  ctx.lineWidth = lineWidth * 3;
-  ctx.shadowColor = glowColor;
-  ctx.shadowBlur = lineWidth * 6;
-  ctx.globalAlpha = 0.35;
-  ctx.stroke(path);
 
-  ctx.shadowBlur = 0;
+  if (performanceMode) {
+    // Fake glow: one wide, translucent underlay stroke instead of
+    // `shadowBlur`. No blur kernel means the rasterizer only fills a
+    // fatter line — cheap enough to stay real-time on the Pi.
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth = lineWidth * 2.5;
+    ctx.globalAlpha = 0.25;
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth = lineWidth * 3;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = lineWidth * 6;
+    ctx.globalAlpha = 0.35;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
   ctx.globalAlpha = 1;
   ctx.strokeStyle = lineColor;
   ctx.lineWidth = lineWidth;
-  ctx.stroke(path);
+  ctx.stroke();
   ctx.restore();
 }

@@ -100,9 +100,30 @@ export async function startCapture(
 
   const rawTime = new Uint8Array(analyser.fftSize);
   const rawFreq = new Uint8Array(analyser.frequencyBinCount);
-  const downsampledTime = new Uint8Array(WAVEFORM_SAMPLE_COUNT);
-  const downsampledFreq = new Uint8Array(FREQUENCY_BIN_COUNT);
   const timeBucket = analyser.fftSize / WAVEFORM_SAMPLE_COUNT;
+
+  /*
+   * Double-buffered output. Allocating a fresh `Uint8Array` pair on every
+   * ~16 ms tick churns the GC, and on a machine that also renders the
+   * visualizer (dev / single-box setups) those collections show up as
+   * periodic animation hitches.
+   *
+   * We can't simply reuse a single buffer, because the frame we hand to
+   * `onFrame` is emitted over Socket.IO and the binary payload may not be
+   * fully flushed by the time the next tick fires. Instead we ping-pong
+   * between two buffer pairs: a buffer is only overwritten two ticks
+   * (~32 ms) after it was emitted, which is comfortably after the
+   * localhost write has flushed.
+   */
+  const timeBuffers = [
+    new Uint8Array(WAVEFORM_SAMPLE_COUNT),
+    new Uint8Array(WAVEFORM_SAMPLE_COUNT),
+  ];
+  const freqBuffers = [
+    new Uint8Array(FREQUENCY_BIN_COUNT),
+    new Uint8Array(FREQUENCY_BIN_COUNT),
+  ];
+  let bufferIndex = 0;
 
   /*
    * Precompute log-spaced frequency-bin ranges.
@@ -161,6 +182,13 @@ export async function startCapture(
   function tick() {
     if (stopped) return;
 
+    // Pick this tick's output buffers, alternating each frame so the
+    // pair handed to the previous `onFrame` stays untouched while its
+    // socket payload flushes.
+    bufferIndex ^= 1;
+    const downsampledTime = timeBuffers[bufferIndex];
+    const downsampledFreq = freqBuffers[bufferIndex];
+
     // --- Time domain (oscilloscope) ----------------------------------
     analyser.getByteTimeDomainData(rawTime);
     let peak = 0;
@@ -193,10 +221,11 @@ export async function startCapture(
       downsampledFreq[i] = count > 0 ? Math.floor(sum / count) : 0;
     }
 
-    // Copy so the consumer is free to retain the buffers.
+    // Hand out the buffers directly — see the double-buffer note above
+    // for why this is safe without a defensive copy.
     onFrame({
-      samples: new Uint8Array(downsampledTime),
-      freqs: new Uint8Array(downsampledFreq),
+      samples: downsampledTime,
+      freqs: downsampledFreq,
       peak: peak / 128,
     });
   }

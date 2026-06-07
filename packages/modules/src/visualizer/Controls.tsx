@@ -356,6 +356,7 @@ export function VisualizerControls({
               lineWidth: lineWidth * ratio,
               sensitivity,
               showGrid: false,
+              performanceMode,
             });
           }
         }

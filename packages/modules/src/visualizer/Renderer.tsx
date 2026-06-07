@@ -321,6 +321,7 @@ export function VisualizerRenderer({
           lineWidth: lineWidth * ratio,
           sensitivity,
           showGrid,
+          performanceMode,
         });
       }
 
@@ -397,6 +398,16 @@ export function VisualizerRenderer({
 }
 
 /**
+ * Reusable output buffer for {@link resampleBars}. The draw loop calls
+ * `resampleBars` every frame with a stable `target`, so allocating a
+ * fresh `Uint8Array` each time just churns the GC (visible as periodic
+ * stutter on the Pi). We keep one buffer and only reallocate when the
+ * requested size changes. The returned array is consumed synchronously
+ * by the draw function before the next frame, so sharing is safe.
+ */
+let resampleScratch: Uint8Array | null = null;
+
+/**
  * Downsample / upsample a frequency array to exactly `target` bars by
  * averaging the source bins that fall into each output bucket. Lets the
  * Renderer respect the user's `barCount` config without re-capturing.
@@ -404,7 +415,10 @@ export function VisualizerRenderer({
 function resampleBars(source: Uint8Array, target: number): Uint8Array {
   if (target <= 0) return new Uint8Array(0);
   if (source.length === target) return source;
-  const out = new Uint8Array(target);
+  if (!resampleScratch || resampleScratch.length !== target) {
+    resampleScratch = new Uint8Array(target);
+  }
+  const out = resampleScratch;
   const ratio = source.length / target;
   for (let i = 0; i < target; i++) {
     const lo = Math.floor(i * ratio);
