@@ -4,17 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
 import { playAudioBytes, primeSpeechVoices, speak } from "@/lib/speech";
+import {
+  buildDefaultConfigMap,
+  loadPersistedState,
+  savePersistedState,
+} from "@/lib/persistence";
 import { modules, randomId, type ModuleStream } from "@cubism/modules";
 
 type DeviceStatus = "online" | "offline" | "unknown";
 
 type ConfigByModule = Record<string, unknown>;
-
-function buildDefaultConfigMap(): ConfigByModule {
-  return Object.fromEntries(
-    modules.map((m) => [m.manifest.id, m.manifest.defaultConfig]),
-  );
-}
 
 /**
  * Auto-rotate interval options. `null` disables rotation. Other values are
@@ -49,6 +48,13 @@ export default function DesktopHomePage() {
   );
   const [autoRotateMs, setAutoRotateMs] = useState<number | null>(null);
   /**
+   * Tracks whether we've already attempted to hydrate state from
+   * localStorage. The persist-on-change effect below waits for this so
+   * we don't immediately overwrite saved values with the SSR defaults
+   * on the first client render.
+   */
+  const [hydrated, setHydrated] = useState(false);
+  /**
    * Mirror of `selectedId` in a ref so the socket handler (bound once on
    * mount) can read the latest value without re-binding on every change.
    */
@@ -79,6 +85,35 @@ export default function DesktopHomePage() {
   useEffect(() => {
     primeSpeechVoices();
   }, []);
+
+  /**
+   * Hydrate selection + per-module config + auto-rotate from
+   * localStorage on mount. Runs after the initial render so SSR output
+   * matches the first client render (avoids React hydration warnings).
+   * Stored configs are validated against each module's current Zod
+   * schema in `loadPersistedState`, so a stale field shape just falls
+   * back to that module's default rather than crashing the panel.
+   */
+  useEffect(() => {
+    const saved = loadPersistedState();
+    if (saved) {
+      setSelectedId(saved.selectedId);
+      setConfigByModule(saved.configByModule);
+      setAutoRotateMs(saved.autoRotateMs);
+    }
+    setHydrated(true);
+  }, []);
+
+  /**
+   * Persist on every meaningful change. Gated on `hydrated` so the
+   * initial defaults can't overwrite saved values before we've had a
+   * chance to read them. `localStorage.setItem` is synchronous but
+   * cheap for payloads this size; no debounce needed.
+   */
+  useEffect(() => {
+    if (!hydrated) return;
+    savePersistedState({ selectedId, configByModule, autoRotateMs });
+  }, [hydrated, selectedId, configByModule, autoRotateMs]);
 
   useEffect(() => {
     socket.connect();
