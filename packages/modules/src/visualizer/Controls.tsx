@@ -44,8 +44,6 @@ import {
   subscribeSession,
 } from "./sessionStore";
 
-const PERFORMANCE_STREAM_INTERVAL_MS = 33;
-
 export function VisualizerControls({
   config,
   onChange,
@@ -72,7 +70,6 @@ export function VisualizerControls({
   const [busy, setBusy] = useState(false);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastFrameRef = useRef<WaveformFrame | null>(getLastFrame());
-  const lastEmitAtRef = useRef(0);
 
   const style = config.style ?? DEFAULT_STYLE;
 
@@ -137,29 +134,20 @@ export function VisualizerControls({
    * the capture session running so the share doesn't have to be redone.
    */
   useEffect(() => {
-    lastEmitAtRef.current = 0;
     setFrameSink((frame) => {
       lastFrameRef.current = frame;
-      const now = Date.now();
-      if (
-        performanceMode &&
-        now - lastEmitAtRef.current < PERFORMANCE_STREAM_INTERVAL_MS
-      ) {
-        return;
-      }
-      lastEmitAtRef.current = now;
       const frameForWire: VisualizerStreamFrame = {
         samples: frame.samples,
         freqs: frame.freqs,
         peak: frame.peak,
-        sentAt: now,
+        sentAt: Date.now(),
       };
       stream?.emit(frameForWire);
     });
     return () => {
       setFrameSink(null);
     };
-  }, [performanceMode, stream]);
+  }, [stream]);
 
   async function handleStart(source: AudioSource) {
     if (busy) return;

@@ -31,22 +31,6 @@ export type Ring = {
 
 const POINT_COUNT = 128;
 const SHAPE_SMOOTHING_WINDOW = 3;
-const rawShapeScratch = new Float32Array(POINT_COUNT);
-
-const angleCache = new Map<number, Float32Array>();
-function getAngleTable(pointCount: number): Float32Array {
-  const existing = angleCache.get(pointCount);
-  if (existing) return existing;
-
-  const out = new Float32Array(pointCount * 2);
-  for (let i = 0; i < pointCount; i++) {
-    const angle = (i / pointCount) * Math.PI * 2;
-    out[i * 2] = Math.cos(angle);
-    out[i * 2 + 1] = Math.sin(angle);
-  }
-  angleCache.set(pointCount, out);
-  return out;
-}
 
 export type DrawConcentricRingsOptions = {
   width: number;
@@ -103,7 +87,6 @@ export function tickAndDrawConcentricRings(
   const minDim = Math.min(width, height);
   const innerRadius = minDim * 0.06;
   const maxRadius = minDim * 0.48;
-  const ringAngles = getAngleTable(POINT_COUNT);
   /*
    * Per-point amplitude bound. We let bars push outward by up to this much
    * relative to their ring's base radius; sensitivity then scales that.
@@ -126,7 +109,7 @@ export function tickAndDrawConcentricRings(
     if (freqs.length > 0) {
       // Direct sample → smoothing pass so the rings look like flowing
       // curves rather than spiky FFT noise.
-      const raw = rawShapeScratch;
+      const raw = new Float32Array(POINT_COUNT);
       for (let i = 0; i < POINT_COUNT; i++) {
         // Sample the lower half of the spectrum twice (mirror) so the ring
         // is symmetric and looks pleasing even on mono content.
@@ -178,20 +161,19 @@ export function tickAndDrawConcentricRings(
     ctx.globalAlpha = 0.55 + 0.45 * bass;
     ctx.beginPath();
     const STEPS = 96;
-    const gridAngles = getAngleTable(STEPS);
     const lobes = 6; // visible wobble cadence around the circle
     for (let i = 0; i <= STEPS; i++) {
       const idx = i % STEPS;
+      const angle = (idx / STEPS) * Math.PI * 2;
       // Mix two sources of wobble: a sine lobe (smooth ring "breathing")
       // and a sample from the FFT itself (audio-driven micro-tremor).
       const binIdx = Math.floor((idx / STEPS) * (freqs.length - 1));
       const fftWobble = freqs.length > 0 ? freqs[binIdx] / 255 - 0.5 : 0;
-      const lobeSin = gridAngles[((idx * lobes) % STEPS) * 2 + 1];
       const offset =
-        wobbleAmp * (lobeSin * 0.5 + fftWobble * 0.5);
+        wobbleAmp * (Math.sin(angle * lobes) * 0.5 + fftWobble * 0.5);
       const r = baseR + offset;
-      const x = cx + r * gridAngles[idx * 2];
-      const y = cy + r * gridAngles[idx * 2 + 1];
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -231,9 +213,10 @@ export function tickAndDrawConcentricRings(
     for (let j = 0; j <= POINT_COUNT; j++) {
       // Loop one extra index so the path closes seamlessly.
       const idx = j % POINT_COUNT;
+      const angle = (idx / POINT_COUNT) * Math.PI * 2;
       const r = ring.baseRadius + ring.shape[idx];
-      const x = cx + r * ringAngles[idx * 2];
-      const y = cy + r * ringAngles[idx * 2 + 1];
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
       if (j === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }

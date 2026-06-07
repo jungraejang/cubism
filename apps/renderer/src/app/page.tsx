@@ -3,11 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { getSocket } from "@/lib/socket";
-import {
-  modules,
-  type AnyCubismModule,
-  type ModuleStreamSource,
-} from "@cubism/modules";
+import { modules, type AnyCubismModule } from "@cubism/modules";
 
 type ActiveModule = {
   module: AnyCubismModule;
@@ -20,19 +16,12 @@ export default function RendererHomePage() {
   const [active, setActive] = useState<ActiveModule | null>(null);
   const resizeFrameRef = useRef<number | null>(null);
   /**
-   * Latest stream payload for the currently active module. Most modules use
-   * this state path because a new payload should re-render their view.
-   * High-frequency visualizer frames use `visualizerStreamRef` below instead
-   * so the canvas loop can pull frames without 60 React renders/sec.
+   * Latest stream payload for the currently active module. Stored as state
+   * (not just a ref) so module Renderers re-render when new frames arrive.
+   * Only kept for the active module - frames for any other module are
+   * discarded since they'd be invisible anyway.
    */
   const [streamData, setStreamData] = useState<unknown>(undefined);
-  const visualizerStreamRef = useRef<unknown>(undefined);
-  const visualizerStreamSource = useMemo<ModuleStreamSource>(
-    () => ({
-      getSnapshot: () => visualizerStreamRef.current,
-    }),
-    [],
-  );
   /**
    * The active module id mirrored into a ref so the high-frequency
    * `module:stream` handler can filter without re-binding on every state
@@ -112,7 +101,6 @@ export default function RendererHomePage() {
         // briefly render with stale frames from the previous one.
         if (!prev || prev.module.manifest.id !== mod.manifest.id) {
           setStreamData(undefined);
-          visualizerStreamRef.current = undefined;
         }
         return { module: mod, config: parsed.data };
       });
@@ -126,10 +114,6 @@ export default function RendererHomePage() {
 
     socket.on("module:stream", (payload) => {
       if (payload.moduleId !== activeIdRef.current) return;
-      if (payload.moduleId === "visualizer") {
-        visualizerStreamRef.current = payload.data;
-        return;
-      }
       setStreamData(payload.data);
     });
 
@@ -289,15 +273,7 @@ export default function RendererHomePage() {
             }}
             className="absolute inset-0"
           >
-            <ActiveRenderer
-              config={active.config}
-              streamData={streamData}
-              streamSource={
-                active.module.manifest.id === "visualizer"
-                  ? visualizerStreamSource
-                  : undefined
-              }
-            />
+            <ActiveRenderer config={active.config} streamData={streamData} />
           </motion.div>
         ) : (
           <motion.main
