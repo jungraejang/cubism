@@ -181,12 +181,19 @@ export function VisualizerRenderer({
      */
     const maxRatio = performanceMode ? 1 : window.devicePixelRatio || 1;
     /*
-     * In performance mode throttle the draw loop to ~30fps. Audio data
-     * still arrives at the original cadence; we just skip frames we don't
-     * have CPU budget to render.
+     * Draw on every animation frame. requestAnimationFrame is already
+     * vsync-aligned and incoming audio frames arrive at ~60Hz, so rendering
+     * each tick keeps motion locked to the display refresh.
+     *
+     * A previous "~30fps" wall-clock gate (minFrameInterval) sampled a fixed
+     * 33ms threshold against jittery rAF timing, which produced an irregular
+     * 33-42ms draw cadence — visible judder — while discarding half the
+     * frames. Per-frame draw cost is sub-millisecond, so there is ample
+     * budget to render every frame. CPU on weak displays is bounded instead
+     * by `maxRatio` (capped at 1 above) and the per-draw performanceMode
+     * simplifications, and rAF degrades gracefully if a device truly can't
+     * keep up.
      */
-    const minFrameInterval = performanceMode ? 33 : 0;
-    let lastDrawAt = 0;
     let raf = 0;
     // Mirror of `hasLiveFrame` so we only call setState on the actual
     // fresh<->stale transition rather than every drawn frame.
@@ -194,12 +201,6 @@ export function VisualizerRenderer({
 
     function tick() {
       if (!canvas || !ctx) return;
-      const now = performance.now();
-      if (now - lastDrawAt < minFrameInterval) {
-        raf = requestAnimationFrame(tick);
-        return;
-      }
-      lastDrawAt = now;
 
       const ratio = Math.min(window.devicePixelRatio || 1, maxRatio);
       const width = canvas.clientWidth * ratio;
