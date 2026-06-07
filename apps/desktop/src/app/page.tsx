@@ -9,6 +9,9 @@ import {
   loadPersistedState,
   savePersistedState,
 } from "@/lib/persistence";
+import { useDesktopTheme } from "@/lib/theme";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { useIsClient } from "@/lib/use-is-client";
 import { modules, randomId, type ModuleStream } from "@cubism/modules";
 
 type DeviceStatus = "online" | "offline" | "unknown";
@@ -35,6 +38,8 @@ const AUTO_ROTATE_OPTIONS: { value: number | null; label: string }[] = [
 const AUTO_SEND_DEBOUNCE_MS = 200;
 
 export default function DesktopHomePage() {
+  const { is8Bit } = useDesktopTheme();
+  const isClient = useIsClient();
   const socket = useMemo(() => getSocket(), []);
   const [connected, setConnected] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>("unknown");
@@ -48,12 +53,12 @@ export default function DesktopHomePage() {
   );
   const [autoRotateMs, setAutoRotateMs] = useState<number | null>(null);
   /**
-   * Tracks whether we've already attempted to hydrate state from
-   * localStorage. The persist-on-change effect below waits for this so
-   * we don't immediately overwrite saved values with the SSR defaults
-   * on the first client render.
+   * Gate for the persist effect. Flips true once we've merged any saved
+   * localStorage snapshot into state (after hydration), so the initial
+   * SSR defaults can't overwrite stored values on first client render.
    */
-  const [hydrated, setHydrated] = useState(false);
+  const [readyToPersist, setReadyToPersist] = useState(false);
+  const [prevIsClient, setPrevIsClient] = useState(isClient);
   /**
    * Mirror of `selectedId` in a ref so the socket handler (bound once on
    * mount) can read the latest value without re-binding on every change.
@@ -87,33 +92,34 @@ export default function DesktopHomePage() {
   }, []);
 
   /**
-   * Hydrate selection + per-module config + auto-rotate from
-   * localStorage on mount. Runs after the initial render so SSR output
-   * matches the first client render (avoids React hydration warnings).
-   * Stored configs are validated against each module's current Zod
-   * schema in `loadPersistedState`, so a stale field shape just falls
-   * back to that module's default rather than crashing the panel.
+   * Merge persisted panel state after hydration. When `isClient` flips
+   * false→true (post-hydration), read localStorage during render and
+   * sync state — React's recommended pattern for external store data
+   * instead of setState inside an effect.
    */
-  useEffect(() => {
-    const saved = loadPersistedState();
-    if (saved) {
-      setSelectedId(saved.selectedId);
-      setConfigByModule(saved.configByModule);
-      setAutoRotateMs(saved.autoRotateMs);
+  if (isClient !== prevIsClient) {
+    setPrevIsClient(isClient);
+    if (isClient) {
+      const saved = loadPersistedState();
+      if (saved) {
+        setSelectedId(saved.selectedId);
+        setConfigByModule(saved.configByModule);
+        setAutoRotateMs(saved.autoRotateMs);
+      }
+      setReadyToPersist(true);
     }
-    setHydrated(true);
-  }, []);
+  }
 
   /**
-   * Persist on every meaningful change. Gated on `hydrated` so the
-   * initial defaults can't overwrite saved values before we've had a
-   * chance to read them. `localStorage.setItem` is synchronous but
-   * cheap for payloads this size; no debounce needed.
+   * Persist on every meaningful change. Gated on `readyToPersist` so the
+   * initial SSR defaults can't overwrite saved values before we've merged
+   * localStorage. `localStorage.setItem` is synchronous but cheap for
+   * payloads this size; no debounce needed.
    */
   useEffect(() => {
-    if (!hydrated) return;
+    if (!readyToPersist) return;
     savePersistedState({ selectedId, configByModule, autoRotateMs });
-  }, [hydrated, selectedId, configByModule, autoRotateMs]);
+  }, [readyToPersist, selectedId, configByModule, autoRotateMs]);
 
   useEffect(() => {
     socket.connect();
@@ -316,8 +322,29 @@ export default function DesktopHomePage() {
     return () => window.clearInterval(interval);
   }, [autoRotateMs, selectedId]);
 
+  const panelClass = is8Bit
+    ? "rounded-none border-4 border-[#5d275d] bg-[#262b44] p-6 shadow-[4px_4px_0_#0d0d1a]"
+    : "rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 shadow-2xl";
+
+  const modulePanelClass = is8Bit
+    ? "rounded-none border-4 border-[#41a459] bg-[#262b44] p-6 shadow-[4px_4px_0_#0d0d1a]"
+    : "rounded-2xl border border-cyan-400/20 bg-zinc-900/80 p-6 shadow-[0_0_40px_rgba(34,211,238,0.08)]";
+
+  const moduleBtnActive = is8Bit
+    ? "bg-[#41a459] text-[#1a1c2c] shadow-[3px_3px_0_#0d0d1a]"
+    : "bg-cyan-400 text-zinc-950";
+
+  const moduleBtnIdle = is8Bit
+    ? "border-2 border-[#5d275d] bg-[#1a1c2c] text-[#a7f070] hover:bg-[#262b44]"
+    : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700";
+
   return (
-    <main className="min-h-screen overflow-hidden bg-zinc-950 text-white">
+    <main
+      className={`desktop-shell relative min-h-screen overflow-hidden ${
+        is8Bit ? "bg-[#1a1c2c] text-[#f4f4f4]" : "bg-zinc-950 text-white"
+      }`}
+    >
+      <ThemeToggle />
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
@@ -329,11 +356,25 @@ export default function DesktopHomePage() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.1 }}
         >
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">
+          <p
+            className={`text-sm uppercase ${
+              is8Bit
+                ? "font-pixel text-[0.625rem] tracking-widest text-[#a7f070]"
+                : "tracking-[0.3em] text-cyan-300"
+            }`}
+          >
             Cubism
           </p>
-          <h1 className="mt-3 text-4xl font-bold">Desktop Control Panel</h1>
-          <p className="mt-2 text-zinc-400">
+          <h1
+            className={`mt-3 font-bold ${
+              is8Bit
+                ? "font-pixel text-xl leading-relaxed text-[#f4f4f4]"
+                : "text-4xl"
+            }`}
+          >
+            Desktop Control Panel
+          </h1>
+          <p className={`mt-2 ${is8Bit ? "text-[#757161] text-xs leading-6" : "text-zinc-400"}`}>
             Control your Raspberry Pi-powered holographic assistant. Changes
             apply to the hologram live.
           </p>
@@ -343,16 +384,36 @@ export default function DesktopHomePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 shadow-2xl"
+          className={panelClass}
         >
-          <h2 className="text-xl font-semibold">Connection</h2>
+          <h2
+            className={
+              is8Bit
+                ? "font-pixel text-sm text-[#b13e53]"
+                : "text-xl font-semibold"
+            }
+          >
+            Connection
+          </h2>
 
-          <div className="mt-4 grid gap-3 text-sm text-zinc-300">
+          <div
+            className={`mt-4 grid gap-3 text-sm ${
+              is8Bit ? "text-[#f4f4f4] leading-6" : "text-zinc-300"
+            }`}
+          >
             <div className="flex items-center gap-3">
               <motion.span
                 animate={{ scale: connected ? [1, 1.25, 1] : 1 }}
                 transition={{ repeat: connected ? Infinity : 0, duration: 1.5 }}
-                className={`h-3 w-3 rounded-full ${connected ? "bg-green-400" : "bg-red-400"}`}
+                className={`h-3 w-3 ${is8Bit ? "rounded-none" : "rounded-full"} ${
+                  connected
+                    ? is8Bit
+                      ? "bg-[#41a459]"
+                      : "bg-green-400"
+                    : is8Bit
+                      ? "bg-[#b13e53]"
+                      : "bg-red-400"
+                }`}
               />
               <span>
                 Socket server: {connected ? "Connected" : "Disconnected"}
@@ -365,7 +426,7 @@ export default function DesktopHomePage() {
             </p>
 
             {lastSeenAt && (
-              <p className="text-zinc-500">
+              <p className={is8Bit ? "text-[#757161] text-xs" : "text-zinc-500"}>
                 Last seen: {new Date(lastSeenAt).toLocaleString()}
               </p>
             )}
@@ -377,10 +438,18 @@ export default function DesktopHomePage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6"
+            className={panelClass}
           >
-            <h2 className="text-xl font-semibold">Modules</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <h2
+              className={
+                is8Bit
+                  ? "font-pixel text-sm text-[#b13e53]"
+                  : "text-xl font-semibold"
+              }
+            >
+              Modules
+            </h2>
+            <p className={`mt-1 text-sm ${is8Bit ? "text-[#757161] text-xs" : "text-zinc-500"}`}>
               Select a module to display and configure.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -393,11 +462,9 @@ export default function DesktopHomePage() {
                     whileHover={{ scale: 1.04 }}
                     onClick={() => setSelectedId(m.manifest.id)}
                     aria-pressed={active}
-                    className={`relative rounded-lg px-3 py-2 text-sm transition-colors ${
-                      active
-                        ? "bg-cyan-400 text-zinc-950"
-                        : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                    }`}
+                    className={`relative px-3 py-2 text-sm transition-colors ${
+                      is8Bit ? "rounded-none" : "rounded-lg"
+                    } ${active ? moduleBtnActive : moduleBtnIdle}`}
                   >
                     {m.manifest.name}
                     {active && autoRotateMs ? (
@@ -410,7 +477,11 @@ export default function DesktopHomePage() {
                           duration: autoRotateMs / 1000,
                           ease: "linear",
                         }}
-                        className="absolute right-1 bottom-1 left-1 h-0.5 origin-left rounded-full bg-zinc-950/60"
+                        className={`absolute right-1 bottom-1 left-1 h-0.5 origin-left ${
+                          is8Bit
+                            ? "rounded-none bg-[#1a1c2c]/60"
+                            : "rounded-full bg-zinc-950/60"
+                        }`}
                       />
                     ) : null}
                   </motion.button>
@@ -419,10 +490,20 @@ export default function DesktopHomePage() {
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-3 text-sm">
-                <span className="w-32 text-zinc-400">Auto rotate</span>
+              <label
+                className={`flex items-center gap-3 text-sm ${
+                  is8Bit ? "font-pixel text-[0.625rem]" : ""
+                }`}
+              >
+                <span className={`w-32 ${is8Bit ? "text-[#a7f070]" : "text-zinc-400"}`}>
+                  Auto rotate
+                </span>
                 <select
-                  className="rounded-lg bg-zinc-800 px-3 py-2 text-white"
+                  className={
+                    is8Bit
+                      ? "border-2 border-[#5d275d] bg-[#1a1c2c] px-3 py-2 text-[#f4f4f4] text-[0.625rem] shadow-[2px_2px_0_#0d0d1a]"
+                      : "rounded-lg bg-zinc-800 px-3 py-2 text-white"
+                  }
                   value={autoRotateMs ?? ""}
                   onChange={(event) =>
                     setAutoRotateMs(
@@ -443,7 +524,7 @@ export default function DesktopHomePage() {
                 </select>
               </label>
               {autoRotateMs ? (
-                <p className="text-xs text-zinc-500">
+                <p className={`text-xs ${is8Bit ? "text-[#757161]" : "text-zinc-500"}`}>
                   Cycling through {modules.length} modules - click any module
                   to reset the timer.
                 </p>
@@ -457,23 +538,29 @@ export default function DesktopHomePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="rounded-2xl border border-cyan-400/20 bg-zinc-900/80 p-6 shadow-[0_0_40px_rgba(34,211,238,0.08)]"
+          className={modulePanelClass}
         >
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-xl font-semibold">
+            <h2
+              className={
+                is8Bit
+                  ? "font-pixel text-sm text-[#41a459]"
+                  : "text-xl font-semibold"
+              }
+            >
               {selected.manifest.name} Module
             </h2>
-            <span className="text-xs text-zinc-500">
+            <span className={`text-xs ${is8Bit ? "text-[#757161]" : "text-zinc-500"}`}>
               v{selected.manifest.version}
             </span>
           </div>
           {selected.manifest.description && (
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className={`mt-1 text-sm ${is8Bit ? "text-[#757161] text-xs" : "text-zinc-500"}`}>
               {selected.manifest.description}
             </p>
           )}
 
-          <div className="mt-4">
+          <div className="desktop-module-controls mt-4">
             <SelectedControls
               config={currentConfig}
               onChange={handleControlsChange}

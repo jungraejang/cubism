@@ -11,6 +11,18 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Desktop shell (modern default) */
+  --desktop-bg: #09090b;
+  --desktop-panel: rgb(24 24 27 / 0.8);
+  --desktop-panel-border: #27272a;
+  --desktop-accent: #22d3ee;
+  --desktop-accent-fg: #09090b;
+  --desktop-muted: #a1a1aa;
+  --desktop-subtle: #71717a;
+  --desktop-radius: 1rem;
+  --desktop-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --desktop-font: var(--font-geist-sans), system-ui, sans-serif;
 }
 
 @theme inline {
@@ -30,5 +42,209 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--desktop-font);
+}
+
+/* ------------------------------------------------------------------ */
+/* 8-bit theme — NES-inspired palette, pixel font, hard edges         */
+/* ------------------------------------------------------------------ */
+
+[data-theme="8bit"] {
+  --background: #1a1c2c;
+  --foreground: #f4f4f4;
+  --desktop-bg: #1a1c2c;
+  --desktop-panel: #262b44;
+  --desktop-panel-border: #5d275d;
+  --desktop-accent: #41a459;
+  --desktop-accent-fg: #1a1c2c;
+  --desktop-muted: #b13e53;
+  --desktop-subtle: #a7f070;
+  --desktop-radius: 0;
+  --desktop-shadow: 4px 4px 0 #0d0d1a;
+  --desktop-font: var(--font-press-start), monospace;
+
+  image-rendering: pixelated;
+}
+
+[data-theme="8bit"] body {
+  background-color: var(--desktop-bg);
+  color: var(--foreground);
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+}
+
+.font-pixel {
+  font-family: var(--font-press-start), monospace;
+}
+
+/* Subtle CRT scanlines over the whole desktop */
+[data-theme="8bit"] body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: repeating-linear-gradient(
+    0deg,
+    rgb(0 0 0 / 0.12) 0,
+    rgb(0 0 0 / 0.12) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+[data-theme="8bit"] .desktop-shell {
+  font-family: var(--desktop-font);
+}
+
+/* Theme toggle — 8-bit pixel switch */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.theme-toggle--8bit {
+  border: 4px solid #0d0d1a;
+  background: #262b44;
+  padding: 0.5rem 0.75rem;
+  box-shadow: 4px 4px 0 #0d0d1a;
+  font-family: var(--font-press-start), monospace;
+  font-size: 0.5rem;
+  line-height: 1.6;
+  color: #a7f070;
+  text-transform: uppercase;
+}
+
+.theme-toggle--8bit:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #0d0d1a;
+}
+
+.theme-toggle__track {
+  display: inline-flex;
+  width: 2.5rem;
+  height: 1.25rem;
+  border: 3px solid #0d0d1a;
+  background: #1a1c2c;
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.theme-toggle--modern .theme-toggle__track {
+  width: 2.75rem;
+  height: 1.375rem;
+  border-radius: 9999px;
+  border: 1px solid #52525b;
+  background: #27272a;
+  padding: 2px;
+}
+
+.theme-toggle__thumb {
+  display: block;
+  width: 0.75rem;
+  height: 0.75rem;
+  background: #71717a;
+  transition: transform 0.15s ease;
+}
+
+.theme-toggle--modern .theme-toggle__thumb {
+  border-radius: 9999px;
+}
+
+.theme-toggle--modern[aria-pressed="true"] .theme-toggle__thumb {
+  transform: translateX(1.25rem);
+  background: #22d3ee;
+}
+
+.theme-toggle--8bit .theme-toggle__thumb {
+  width: 0.625rem;
+  height: 0.625rem;
+  background: #757161;
+}
+
+.theme-toggle--8bit[aria-pressed="true"] .theme-toggle__thumb {
+  transform: translateX(1.125rem);
+  background: #41a459;
+}
+
+.theme-toggle--8bit .theme-toggle__label {
+  letter-spacing: 0.05em;
+}
+
+.theme-toggle--modern .theme-toggle__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Module controls — remap common Tailwind utilities in 8-bit mode */
+[data-theme="8bit"] .desktop-module-controls .rounded-lg,
+[data-theme="8bit"] .desktop-module-controls .rounded-xl,
+[data-theme="8bit"] .desktop-module-controls .rounded-2xl,
+[data-theme="8bit"] .desktop-module-controls .rounded-full,
+[data-theme="8bit"] .desktop-module-controls .rounded {
+  border-radius: 0 !important;
+}
+
+[data-theme="8bit"] .desktop-module-controls .bg-zinc-950,
+[data-theme="8bit"] .desktop-module-controls .bg-zinc-900,
+[data-theme="8bit"] .desktop-module-controls .bg-zinc-800,
+[data-theme="8bit"] .desktop-module-controls .bg-zinc-700 {
+  background-color: #1a1c2c !important;
+}
+
+[data-theme="8bit"] .desktop-module-controls .border-zinc-800,
+[data-theme="8bit"] .desktop-module-controls .border-zinc-700 {
+  border-color: #5d275d !important;
+  border-width: 3px !important;
+}
+
+[data-theme="8bit"] .desktop-module-controls .text-zinc-100,
+[data-theme="8bit"] .desktop-module-controls .text-zinc-200,
+[data-theme="8bit"] .desktop-module-controls .text-white {
+  color: #f4f4f4 !important;
+}
+
+[data-theme="8bit"] .desktop-module-controls .text-zinc-300,
+[data-theme="8bit"] .desktop-module-controls .text-zinc-400 {
+  color: #a7f070 !important;
+}
+
+[data-theme="8bit"] .desktop-module-controls .text-zinc-500 {
+  color: #757161 !important;
+}
+
+[data-theme="8bit"] .desktop-module-controls .bg-cyan-400,
+[data-theme="8bit"] .desktop-module-controls .bg-cyan-500 {
+  background-color: #41a459 !important;
+  color: #1a1c2c !important;
+  box-shadow: 3px 3px 0 #0d0d1a;
+}
+
+[data-theme="8bit"] .desktop-module-controls .text-cyan-300,
+[data-theme="8bit"] .desktop-module-controls .text-cyan-400,
+[data-theme="8bit"] .desktop-module-controls .focus\:ring-cyan-400:focus {
+  --tw-ring-color: #41a459 !important;
+  color: #a7f070 !important;
+}
+
+[data-theme="8bit"] .desktop-module-controls button,
+[data-theme="8bit"] .desktop-module-controls select,
+[data-theme="8bit"] .desktop-module-controls input[type="text"],
+[data-theme="8bit"] .desktop-module-controls input[type="number"],
+[data-theme="8bit"] .desktop-module-controls input[type="url"],
+[data-theme="8bit"] .desktop-module-controls input[type="password"] {
+  font-family: var(--font-press-start), monospace;
+  font-size: 0.625rem;
+  line-height: 1.5;
+}
+
+[data-theme="8bit"] .desktop-module-controls input[type="range"] {
+  accent-color: #41a459;
+}
+
+[data-theme="8bit"] .desktop-module-controls .shadow-2xl,
+[data-theme="8bit"] .desktop-module-controls .shadow-lg {
+  box-shadow: 4px 4px 0 #0d0d1a !important;
 }

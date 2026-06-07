@@ -529,13 +529,7 @@ function StatusOrb({
         }}
       >
         {state === "processing" ? (
-          <motion.div
-            aria-hidden
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
-            className="h-[10vmin] w-[10vmin] rounded-full border-4 border-transparent"
-            style={{ borderTopColor: accentColor }}
-          />
+          <ProcessingSpinner accentColor={accentColor} />
         ) : (
           <MicIcon
             color={
@@ -549,6 +543,26 @@ function StatusOrb({
         )}
       </motion.div>
     </div>
+  );
+}
+
+function ProcessingSpinner({ accentColor }: { accentColor: string }) {
+  /*
+   * CSS rotation instead of framer-motion's repeat:Infinity. On the first
+   * recording→processing transition the parent orb is still spring-settling
+   * its scale; a nested motion rotate often never starts repeating until the
+   * next mount (second prompt). A plain CSS spin is independent of the
+   * parent's transform and starts reliably every time.
+   */
+  return (
+    <div
+      aria-hidden
+      className="h-[10vmin] w-[10vmin] animate-spin rounded-full border-4 border-transparent"
+      style={{
+        borderTopColor: accentColor,
+        animationDuration: "1.2s",
+      }}
+    />
   );
 }
 
