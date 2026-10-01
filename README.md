@@ -1,4 +1,4 @@
-# Cubism
+# Cubism (Featured on Raspbery Pi Magazine)
 
 <img width="2268" height="4032" alt="IMG_7802" src="https://github.com/user-attachments/assets/8ce6544c-7c0f-401b-bd5e-1c5ed5cd532c" />
 
